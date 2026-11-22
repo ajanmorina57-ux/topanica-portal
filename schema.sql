@@ -1,0 +1,68 @@
+CREATE TABLE IF NOT EXISTS articles (
+  id SERIAL PRIMARY KEY,
+  slug TEXT NOT NULL UNIQUE,
+  title TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  body TEXT NOT NULL,
+  category TEXT NOT NULL CHECK (category IN ('topanice','komuna','zhvillim','mergata')),
+  cover_url TEXT,
+  source_name TEXT,
+  source_url TEXT UNIQUE,
+  source_type TEXT NOT NULL DEFAULT 'manual' CHECK (source_type IN ('rss','tavily','facebook_import','manual')),
+  is_auto_scraped BOOLEAN NOT NULL DEFAULT FALSE,
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('published','draft')),
+  published_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Bring an existing installation forward without removing the legacy flag used by the prior admin UI.
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS source_type TEXT NOT NULL DEFAULT 'manual';
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS is_auto_scraped BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE articles DROP CONSTRAINT IF EXISTS articles_category_check;
+UPDATE articles SET category = 'topanice' WHERE category = 'lajme';
+ALTER TABLE articles ADD CONSTRAINT articles_category_check CHECK (category IN ('topanice','komuna','zhvillim','mergata'));
+ALTER TABLE articles DROP CONSTRAINT IF EXISTS articles_source_type_check;
+UPDATE articles SET source_type = 'rss' WHERE is_auto_scraped = TRUE AND source_type = 'manual';
+ALTER TABLE articles ADD CONSTRAINT articles_source_type_check CHECK (source_type IN ('rss','tavily','facebook_import','manual'));
+
+CREATE TABLE IF NOT EXISTS history_entries (
+  id SERIAL PRIMARY KEY,
+  era_year TEXT NOT NULL,
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  source_citation TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS gallery_photos (
+  id SERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  category TEXT NOT NULL CHECK (category IN ('arkiv','natyre','fshati')),
+  image_url TEXT NOT NULL,
+  year_taken INTEGER,
+  credit TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS submissions (
+  id SERIAL PRIMARY KEY,
+  sender_name TEXT NOT NULL,
+  sender_contact TEXT,
+  type TEXT NOT NULL CHECK (type IN ('histori','foto','lajm')),
+  message TEXT NOT NULL,
+  attachment_url TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS site_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+INSERT INTO site_settings (key, value) VALUES ('auto_publish_news', 'false')
+ON CONFLICT (key) DO NOTHING;
+
+CREATE INDEX IF NOT EXISTS articles_published_idx ON articles(status, published_at DESC);
+CREATE INDEX IF NOT EXISTS articles_category_published_idx ON articles(category, status, published_at DESC);
+CREATE INDEX IF NOT EXISTS submissions_status_idx ON submissions(status, created_at DESC);
