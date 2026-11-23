@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-export const metadata: Metadata = { title: "Kontribuo" };
+export const metadata: Metadata = { title: "Ndaj me ne" };
 export default async function ContributePage({ searchParams }: { searchParams: Promise<{ sent?: string; error?: string }> }) {
   const { sent, error } = await searchParams;
-  return <div className="page-shell wrap contribute-page"><div className="page-intro"><p className="section-kicker">Për banorët dhe mërgatën</p><h1>Ndani një kujtim</h1><p>Një fotografi, një lajm i vogël apo një histori familjare ndihmon ta ruajmë Topanicën bashkë.</p></div>
+  return <div className="page-shell wrap contribute-page"><div className="page-intro"><p className="section-kicker">Për banorët dhe mërgatën</p><h1>Ndaj me ne</h1><p>Një fotografi, një lajm i vogël apo një histori familjare ndihmon ta ruajmë Topanicën bashkë.</p></div>
     {sent === "1" && <p className="success-note" role="status">Faleminderit. Kontributi juaj u dërgua dhe do të shqyrtohet para publikimit.</p>}
     {error && <p className="admin-error" role="alert">{error === "invalid" ? "Kontrolloni të dhënat dhe provoni përsëri." : "Kontributi nuk u ruajt. Provoni përsëri më vonë."}</p>}
     <form className="contribution-form" action="/api/submissions" method="post">
