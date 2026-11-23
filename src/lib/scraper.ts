@@ -6,7 +6,7 @@ import { z } from "zod";
 
 const parser = new Parser({
   timeout: 12000,
-  headers: { "User-Agent": "TopanicaCommunityPortal/1.0 (news feed reader)" },
+  headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) TopanicaCommunityPortal/1.0" },
 });
 
 const generatedSchema = z.object({
@@ -25,6 +25,7 @@ type Candidate = {
   sourceName: string;
   sourceType: SourceType;
   publishedAt?: string;
+  coverUrl?: string | null;
 };
 
 const feeds = [
@@ -63,71 +64,192 @@ function normalizeUrl(value: string): string | null {
   }
 }
 
+function isValidImageUrl(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = new URL(trimmed);
+    if (!["http:", "https:"].includes(parsed.protocol)) return null;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+async function fetchOgImage(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(6000),
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) TopanicaPortal/1.0" },
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+    const match =
+      html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ||
+      html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i) ||
+      html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i) ||
+      html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image["']/i);
+
+    if (match?.[1]) {
+      const resolved = new URL(match[1], url).toString();
+      return isValidImageUrl(resolved);
+    }
+  } catch {
+    // Ignore fetch or parsing errors for optional cover images
+  }
+  return null;
+}
+
 async function collectRss(url: string, fallbackSource: string, filter?: RegExp): Promise<Candidate[]> {
-  const feed = await parser.parseURL(url);
-  return feed.items.flatMap((item) => {
-    const sourceUrl = item.link ? normalizeUrl(item.link.trim()) : null;
-    const title = cleanText(item.title, 500);
-    const snippet = cleanText(item.contentSnippet || item.content || item.summary || "");
-    if (!sourceUrl || !title || (filter && !filter.test(`${title} ${snippet}`))) return [];
-    return [{
-      title,
-      snippet,
-      url: sourceUrl,
-      sourceName: cleanText(item.source?.title || item.creator || fallbackSource, 180),
-      sourceType: "rss" as const,
-      publishedAt: item.isoDate || item.pubDate,
-    }];
-  });
+  try {
+    const feed = await parser.parseURL(url);
+    return feed.items.flatMap((item) => {
+      const sourceUrl = item.link ? normalizeUrl(item.link.trim()) : null;
+      const title = cleanText(item.title, 500);
+      const snippet = cleanText(item.contentSnippet || item.content || item.summary || "");
+      if (!sourceUrl || !title || (filter && !filter.test(`${title} ${snippet}`))) return [];
+
+      let coverUrl: string | null = null;
+      if (item.enclosure?.url) {
+        coverUrl = isValidImageUrl(item.enclosure.url);
+      }
+      if (!coverUrl) {
+        const itemObj = item as Record<string, unknown>;
+        const media = itemObj["media:content"] as { $?: { url?: string } } | undefined;
+        const thumb = itemObj["media:thumbnail"] as { $?: { url?: string } } | undefined;
+        coverUrl = isValidImageUrl(media?.$?.url) || isValidImageUrl(thumb?.$?.url);
+      }
+      if (!coverUrl) {
+        const itemObj = item as Record<string, unknown>;
+        const rawContent = String(itemObj["content:encoded"] || item.content || item.summary || "");
+        const match = rawContent.match(/<img[^>]+src=["'](https?:\/\/[^"']+)["']/i);
+        if (match?.[1]) coverUrl = isValidImageUrl(match[1]);
+      }
+
+      return [{
+        title,
+        snippet,
+        url: sourceUrl,
+        sourceName: cleanText(item.source?.title || item.creator || fallbackSource, 180),
+        sourceType: "rss" as const,
+        publishedAt: item.isoDate || item.pubDate,
+        coverUrl,
+      }];
+    });
+  } catch {
+    return [];
+  }
 }
 
 async function collectMunicipalPosts(): Promise<Candidate[]> {
-  const endpoint = new URL("https://kamenice.rks-gov.net/wp-json/wp/v2/posts");
-  endpoint.searchParams.set("per_page", "20");
-  endpoint.searchParams.set("_fields", "date,link,title,excerpt,content");
-  const response = await fetch(endpoint, { signal: AbortSignal.timeout(12000), headers: { accept: "application/json" } });
-  if (!response.ok) throw new Error(`Municipal WordPress feed returned HTTP ${response.status}`);
-  const posts = await response.json() as Array<{
-    date?: string;
-    link?: string;
-    title?: { rendered?: string };
-    excerpt?: { rendered?: string };
-    content?: { rendered?: string };
-  }>;
-  return posts.flatMap((post) => {
-    const title = cleanText(post.title?.rendered, 500);
-    const snippet = cleanText(post.excerpt?.rendered || post.content?.rendered || "");
-    const url = post.link ? normalizeUrl(post.link) : null;
-    if (!title || !url || !municipalTerms.test(`${title} ${snippet}`)) return [];
-    return [{ title, snippet, url, sourceName: "Komuna e Kamenicës", sourceType: "rss" as const, publishedAt: post.date }];
-  });
+  try {
+    const endpoint = new URL("https://kamenice.rks-gov.net/wp-json/wp/v2/posts");
+    endpoint.searchParams.set("per_page", "20");
+    endpoint.searchParams.set("_embed", "wp:featuredmedia");
+    endpoint.searchParams.set("_fields", "date,date_gmt,link,title,excerpt,content,_links,_embedded");
+    const response = await fetch(endpoint, {
+      signal: AbortSignal.timeout(12000),
+      headers: { accept: "application/json", "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) TopanicaPortal/1.0" },
+    });
+    if (!response.ok) return [];
+    const posts = await response.json() as Array<{
+      date?: string;
+      date_gmt?: string;
+      link?: string;
+      title?: { rendered?: string };
+      excerpt?: { rendered?: string };
+      content?: { rendered?: string };
+      _embedded?: {
+        "wp:featuredmedia"?: Array<{ source_url?: string }>;
+      };
+    }>;
+    if (!Array.isArray(posts)) return [];
+    return posts.flatMap((post) => {
+      const title = cleanText(post.title?.rendered, 500);
+      const snippet = cleanText(post.excerpt?.rendered || post.content?.rendered || "");
+      const url = post.link ? normalizeUrl(post.link) : null;
+      if (!title || !url || !municipalTerms.test(`${title} ${snippet}`)) return [];
+
+      let coverUrl = isValidImageUrl(post._embedded?.["wp:featuredmedia"]?.[0]?.source_url);
+      if (!coverUrl && post.content?.rendered) {
+        const match = post.content.rendered.match(/<img[^>]+src=["'](https?:\/\/[^"']+)["']/i);
+        if (match?.[1]) coverUrl = isValidImageUrl(match[1]);
+      }
+
+      const publishedAt = post.date_gmt ? `${post.date_gmt}Z` : post.date;
+
+      return [{
+        title,
+        snippet,
+        url,
+        sourceName: "Komuna e Kamenicës",
+        sourceType: "rss" as const,
+        publishedAt,
+        coverUrl,
+      }];
+    });
+  } catch {
+    return [];
+  }
 }
 
 async function collectTavily(queryText: string): Promise<Candidate[]> {
   const apiKey = process.env.TAVILY_API_KEY;
-  if (!apiKey) throw new Error("TAVILY_API_KEY is not configured");
-  const response = await fetch("https://api.tavily.com/search", {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      api_key: apiKey,
-      query: queryText,
-      search_depth: "basic",
-      topic: "news",
-      days: 7,
-      time_range: "week",
-      max_results: 5,
-    }),
-    signal: AbortSignal.timeout(15000),
-  });
-  if (!response.ok) throw new Error(`Tavily search returned HTTP ${response.status}`);
-  const payload = await response.json() as { results?: Array<{ title?: string; content?: string; url?: string; published_date?: string }> };
-  return (payload.results || []).flatMap((result) => {
-    const title = cleanText(result.title, 500);
-    const url = result.url ? normalizeUrl(result.url) : null;
-    if (!title || !url) return [];
-    return [{ title, snippet: cleanText(result.content || ""), url, sourceName: "Tavily Search", sourceType: "tavily" as const, publishedAt: result.published_date }];
-  });
+  if (!apiKey) return [];
+  try {
+    const response = await fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        api_key: apiKey,
+        query: queryText,
+        search_depth: "basic",
+        topic: "news",
+        days: 7,
+        time_range: "week",
+        max_results: 5,
+        include_images: true,
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!response.ok) return [];
+    const payload = await response.json() as {
+      results?: Array<{
+        title?: string;
+        content?: string;
+        url?: string;
+        published_date?: string;
+        images?: string[];
+      }>;
+      images?: string[];
+    };
+    return (payload.results || []).flatMap((result, index) => {
+      const title = cleanText(result.title, 500);
+      const url = result.url ? normalizeUrl(result.url) : null;
+      if (!title || !url) return [];
+
+      let coverUrl: string | null = null;
+      if (Array.isArray(result.images) && result.images[0]) {
+        coverUrl = isValidImageUrl(result.images[0]);
+      }
+      if (!coverUrl && Array.isArray(payload.images) && payload.images[index]) {
+        coverUrl = isValidImageUrl(payload.images[index]);
+      }
+
+      return [{
+        title,
+        snippet: cleanText(result.content || ""),
+        url,
+        sourceName: "Tavily Search",
+        sourceType: "tavily" as const,
+        publishedAt: result.published_date,
+        coverUrl,
+      }];
+    });
+  } catch {
+    return [];
+  }
 }
 
 async function filterAndSummarize(candidate: Candidate) {
@@ -219,12 +341,30 @@ export async function runScraper() {
       if (!generated.relevant) { skipped++; return; }
       const slugBase = slugify(generated.title) || "lajm-topanica";
       const slug = `${slugBase}-${randomUUID()}`;
+
+      // 1. Preserve original publication date from source
       const publishedAt = candidate.publishedAt && !Number.isNaN(Date.parse(candidate.publishedAt))
         ? new Date(candidate.publishedAt).toISOString()
         : new Date().toISOString();
+
+      // 2. Resolve photo: from RSS/Tavily, or fallback to OpenGraph meta from webpage
+      const coverUrl = candidate.coverUrl || (await fetchOgImage(candidate.url));
+
       const rows = await query<{ id: number }>(
-        "INSERT INTO articles (slug,title,summary,body,category,source_name,source_url,source_type,is_auto_scraped,status,published_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,TRUE,$9,$10) ON CONFLICT (source_url) DO NOTHING RETURNING id",
-        [slug, generated.title, generated.summary, generated.body, generated.category, candidate.sourceName || new URL(candidate.url).hostname, candidate.url, candidate.sourceType, status, status === "published" ? publishedAt : null],
+        "INSERT INTO articles (slug,title,summary,body,category,cover_url,source_name,source_url,source_type,is_auto_scraped,status,published_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,TRUE,$10,$11) ON CONFLICT (source_url) DO NOTHING RETURNING id",
+        [
+          slug,
+          generated.title,
+          generated.summary,
+          generated.body,
+          generated.category,
+          coverUrl || null,
+          candidate.sourceName || new URL(candidate.url).hostname,
+          candidate.url,
+          candidate.sourceType,
+          status,
+          publishedAt,
+        ],
       );
       if (rows.length) inserted++;
       else skipped++;

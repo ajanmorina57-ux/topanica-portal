@@ -119,6 +119,8 @@ h1, h2, h3, p { margin-top: 0; }
 .article-page-meta span { color: var(--green); }
 .article-page h1 { max-width: 850px; margin: 0 0 20px; font-family: var(--serif); font-size: clamp(3rem, 7vw, 6.4rem); font-weight: 500; letter-spacing: -.055em; line-height: 1.02; }
 .article-standfirst { max-width: 700px; color: #49443e; font-family: var(--serif); font-size: clamp(1.3rem, 2.5vw, 1.8rem); line-height: 1.45; }
+.article-cover-frame { max-width: 850px; margin: 34px 0 38px; border: 1px solid var(--line); background: #eee; overflow: hidden; }
+.article-cover-img { display: block; width: 100%; height: auto; max-height: 520px; object-fit: cover; }
 .article-body { max-width: 680px; margin-top: 48px; font-size: 17px; line-height: 1.85; }
 .article-body p { margin-bottom: 1.55em; }
 .source-credit { display: grid; grid-template-columns: 1fr 1fr 1fr; align-items: center; gap: 1rem; margin-top: 60px; padding-block: 17px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-size: 12px; }

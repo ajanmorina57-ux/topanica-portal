@@ -40,23 +40,34 @@ function publicHttpUrl(value: string) {
   return url;
 }
 
-async function extractUrl(url: string) {
+async function extractUrl(url: string): Promise<{ text: string; imageUrl: string | null }> {
   const key = process.env.TAVILY_API_KEY;
   if (!key) throw new Error("Për formatimin e lidhjeve konfiguroni TAVILY_API_KEY ose ngjisni tekstin e postimit këtu.");
   const response = await fetch("https://api.tavily.com/extract", {
     method: "POST",
     headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-    body: JSON.stringify({ urls: url, extract_depth: "basic", format: "markdown", include_images: false }),
+    body: JSON.stringify({ urls: url, extract_depth: "basic", format: "markdown", include_images: true }),
     signal: AbortSignal.timeout(20000),
   });
   if (!response.ok) throw new Error(`Nuk u lexua lidhja burimore (HTTP ${response.status}).`);
   const payload = await response.json() as {
-    results?: Array<{ url?: string; raw_content?: string }>;
+    results?: Array<{ url?: string; raw_content?: string; images?: string[] }>;
     failed_results?: Array<{ error?: string }>;
   };
-  const content = payload.results?.find((result) => result.url === url)?.raw_content || payload.results?.[0]?.raw_content;
+  const matched = payload.results?.find((result) => result.url === url) || payload.results?.[0];
+  const content = matched?.raw_content;
   if (!content?.trim()) throw new Error(payload.failed_results?.[0]?.error || "Nuk u gjet tekst i lexueshëm në lidhje.");
-  return content.slice(0, 12000);
+
+  let imageUrl: string | null = null;
+  const firstImage = matched?.images?.[0];
+  if (firstImage) {
+    try {
+      const parsed = new URL(firstImage);
+      if (["http:", "https:"].includes(parsed.protocol)) imageUrl = parsed.toString();
+    } catch {}
+  }
+
+  return { text: content.slice(0, 12000), imageUrl };
 }
 
 export async function POST(request: Request) {
@@ -67,13 +78,15 @@ export async function POST(request: Request) {
     const input = inputSchema.parse(await request.json());
     let sourceUrl: URL | null = null;
     let material = input.text;
+    let coverUrl: string | null = null;
     let sourceType: "manual" | "facebook_import" | "tavily" = input.source_type;
     if (input.source_url) {
       sourceUrl = publicHttpUrl(input.source_url);
       const duplicate = await query<{ id: number }>("SELECT id FROM articles WHERE source_url=$1 LIMIT 1", [sourceUrl.toString()]);
       if (duplicate.length) return NextResponse.json({ error: "Ky burim është importuar tashmë." }, { status: 409 });
       const extracted = await extractUrl(sourceUrl.toString());
-      material = [input.text, extracted].filter(Boolean).join("\n\n").slice(0, 12000);
+      coverUrl = extracted.imageUrl;
+      material = [input.text, extracted.text].filter(Boolean).join("\n\n").slice(0, 12000);
       sourceType = sourceUrl.hostname.endsWith("facebook.com") || sourceUrl.hostname.endsWith("fb.watch") ? "facebook_import" : "tavily";
     }
     if (material.trim().length < 30) return NextResponse.json({ error: "Shtoni më shumë tekst që përmban informacion për lajmin." }, { status: 400 });
@@ -101,6 +114,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       article: {
         ...formatted,
+        cover_url: coverUrl || "",
         source_name: sourceName,
         source_url: sourceUrl?.toString() || "",
         source_type: sourceType,
