@@ -30,7 +30,7 @@ const photoSchema = z.object({
   id: z.coerce.number().int().positive().optional(),
   title: z.string().trim().min(2).max(240),
   category: z.enum(["arkiv", "natyre", "fshati"]),
-  image_url: httpUrl,
+  image_url: z.string().trim().min(1).max(2000).refine((val) => /^(https?:\/\/|\/)/i.test(val), "Duhet të jetë URL ose shteg lokal"),
   year_taken: z.union([z.literal(""), z.coerce.number().int().min(1800).max(2100)]).optional(),
   credit: z.string().trim().max(500).optional(),
 });
