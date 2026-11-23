@@ -42,7 +42,7 @@ Gjeneroni sekrete të veçanta e të rastësishme për `SESSION_SECRET` dhe `CRO
 
 1. Krijoni bazën Neon, vendosni variablat e mjedisit dhe ekzekutoni `npm run db:seed` një herë.
 2. Publikoni aplikacionin në Vercel ose në një host që mbështet Next.js App Router dhe funksione Node.js.
-3. Sigurohuni që `CRON_SECRET` të jetë vendosur në mjedisin e cron-it. `vercel.json` planifikon `/api/cron/scrape` çdo gjashtë orë.
+3. Sigurohuni që `CRON_SECRET` të jetë vendosur në mjedisin e cron-it. `vercel.json` planifikon `/api/cron/scrape` një herë në ditë (08:00 UTC, i përshtatshëm për planin Vercel Hobby).
 4. Lëreni `auto_publish_news` të fikur derisa redaksia t’i ketë shqyrtuar rezultatet e scraper-it. Cilësimi fillestar është draft.
 
 ## Burimet dhe përmbajtja
