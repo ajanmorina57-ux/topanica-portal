@@ -2,30 +2,49 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-motion";
 import type { GalleryPhoto } from "@/lib/models";
 import { GALLERY_CATEGORIES, GALLERY_LABELS } from "@/lib/site";
-import { Reveal } from "@/components/Motion";
 
-const filters = [["all", "Të gjitha"], ...GALLERY_CATEGORIES.map((category) => [category, GALLERY_LABELS[category]] as const)] as const;
-const calmEase = [0.22, 1, 0.36, 1] as const;
+const filters = [
+  ["all", "Të gjitha"],
+  ...GALLERY_CATEGORIES.map((category) => [category, GALLERY_LABELS[category]] as const),
+] as const;
 
 export function GalleryArchive({ photos }: { photos: GalleryPhoto[] }) {
   const [filter, setFilter] = useState<string>("all");
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  const reduce = useReducedMotion();
   const isOpen = selectedIndex !== null;
   const closeRef = useRef<HTMLButtonElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
-  const visible = useMemo(() => photos.filter((photo) => filter === "all" || photo.category === filter), [photos, filter]);
-  const selected = selectedIndex === null ? null : visible[selectedIndex] ?? null;
+
+  const counts = useMemo(() => {
+    const map: Record<string, number> = { all: photos.length };
+    for (const category of GALLERY_CATEGORIES) map[category] = 0;
+    for (const photo of photos) {
+      map[photo.category] = (map[photo.category] ?? 0) + 1;
+    }
+    return map;
+  }, [photos]);
+
+  const visible = useMemo(
+    () => photos.filter((photo) => filter === "all" || photo.category === filter),
+    [photos, filter],
+  );
+  const selected = selectedIndex === null ? null : (visible[selectedIndex] ?? null);
 
   useEffect(() => {
     if (!isOpen) return;
     const closeOnKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { event.preventDefault(); setSelectedIndex(null); }
-      else if (event.key === "ArrowRight") { event.preventDefault(); setSelectedIndex((index) => index === null ? null : (index + 1) % visible.length); }
-      else if (event.key === "ArrowLeft") { event.preventDefault(); setSelectedIndex((index) => index === null ? null : (index - 1 + visible.length) % visible.length); }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setSelectedIndex(null);
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        setSelectedIndex((index) => (index === null ? null : (index + 1) % visible.length));
+      } else if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        setSelectedIndex((index) => (index === null ? null : (index - 1 + visible.length) % visible.length));
+      }
     };
     window.addEventListener("keydown", closeOnKey);
     return () => window.removeEventListener("keydown", closeOnKey);
@@ -47,31 +66,176 @@ export function GalleryArchive({ photos }: { photos: GalleryPhoto[] }) {
     setSelectedIndex(index);
   }
 
-  return <>
-    <LayoutGroup id="gallery-filters">
+  return (
+    <>
       <div className="filter-row" aria-label="Filtro galerinë">
-        {filters.map(([value, label]) => <button type="button" key={value} aria-pressed={filter === value} className={filter === value ? "filter-button active" : "filter-button"} onClick={() => { setFilter(value); setSelectedIndex(null); }}>
-          {label}{filter === value && <motion.span className="filter-indicator" layoutId="gallery-filter-indicator" transition={{ duration: 0.34, ease: calmEase }} />}
-        </button>)}
+        {filters.map(([value, label]) => (
+          <button
+            type="button"
+            key={value}
+            aria-pressed={filter === value}
+            className={filter === value ? "filter-button active" : "filter-button"}
+            onClick={() => {
+              setFilter(value);
+              setSelectedIndex(null);
+            }}
+          >
+            <span>{label}</span>
+            <span className="filter-count">{counts[value] ?? 0}</span>
+            {filter === value && <span className="filter-indicator" aria-hidden="true" />}
+          </button>
+        ))}
       </div>
-    </LayoutGroup>
-    {visible.length ? <div className="gallery-grid">{visible.map((photo, index) => <Reveal className="gallery-reveal" delay={index % 6 * 0.045} key={photo.id}>
-      <motion.button type="button" className="gallery-item" onClick={() => openPhoto(index)} aria-label={`Hap fotografinë ${photo.title}`} whileHover={reduce ? undefined : { color: "var(--green)" }} transition={{ duration: 0.3, ease: calmEase }}>
-        <span className="gallery-image-frame"><motion.span className="gallery-image-motion" whileHover={reduce ? undefined : { scale: 1.02 }} transition={{ duration: 0.45, ease: calmEase }}><Image src={photo.image_url} alt={photo.title} width={1200} height={900} unoptimized loading="lazy" /></motion.span></span>
-        <span>{photo.title}{photo.year_taken ? ` · ${photo.year_taken}` : ""}</span>
-      </motion.button>
-    </Reveal>)}</div> : <div className="gallery-empty"><p>Arkivi fotografik po nis me kujtimet tuaja.</p><p>Fotografi të Topanicës nga familjet, rrugët dhe peizazhi i fshatit do ta pasurojnë këtë galeri.</p></div>}
 
-    <AnimatePresence>
-      {selected && <motion.div className="lightbox" role="dialog" aria-modal="true" aria-label={selected.title} tabIndex={-1}
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reduce ? 0.01 : 0.24, ease: calmEase }}
-        onClick={(event) => { if (event.target === event.currentTarget) setSelectedIndex(null); }}>
-        <button ref={closeRef} type="button" className="lightbox-close" aria-label="Mbyll fotografinë" onClick={() => setSelectedIndex(null)}>×</button>
-        {visible.length > 1 && <button type="button" className="lightbox-nav lightbox-prev" aria-label="Fotografia e mëparshme" onClick={() => setSelectedIndex((index) => index === null ? null : (index - 1 + visible.length) % visible.length)}>←</button>}
-        <motion.div key={selected.id} className="lightbox-image" initial={{ opacity: 0, scale: reduce ? 1 : 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: reduce ? 1 : 0.98 }} transition={{ duration: reduce ? 0.01 : 0.35, ease: calmEase }}><Image src={selected.image_url} alt={selected.title} width={1800} height={1350} unoptimized /></motion.div>
-        {visible.length > 1 && <button type="button" className="lightbox-nav lightbox-next" aria-label="Fotografia tjetër" onClick={() => setSelectedIndex((index) => index === null ? null : (index + 1) % visible.length)}>→</button>}
-        <p>{selected.title}{selected.year_taken ? ` · ${selected.year_taken}` : ""}{selected.credit ? ` · ${selected.credit}` : ""}</p>
-      </motion.div>}
-    </AnimatePresence>
-  </>;
+      {visible.length ? (
+        <div className="gallery-grid">
+          {visible.map((photo, index) => (
+            <div className="gallery-reveal" key={photo.id}>
+              <button
+                type="button"
+                className="gallery-item"
+                onClick={() => openPhoto(index)}
+                aria-label={`Hap fotografinë: ${photo.title}`}
+              >
+                <span className="gallery-image-frame">
+                  <Image
+                    src={photo.image_url}
+                    alt={photo.title}
+                    width={1200}
+                    height={900}
+                    sizes="(max-width: 540px) calc(100vw - 40px), (max-width: 800px) 46vw, (max-width: 1200px) 31vw, 380px"
+                    unoptimized={photo.image_url.startsWith("http") || photo.image_url.startsWith("/api/")}
+                    priority={index === 0}
+                    fetchPriority={index === 0 ? "high" : undefined}
+                    loading={index === 0 ? undefined : index < 3 ? "eager" : "lazy"}
+                  />
+                </span>
+                <span className="gallery-card-caption">
+                  <span className="gallery-card-title">{photo.title}</span>
+                  <span className="gallery-card-meta">
+                    {GALLERY_LABELS[photo.category]}
+                    {photo.year_taken ? ` · ${photo.year_taken}` : ""}
+                  </span>
+                </span>
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : photos.length > 0 ? (
+        <div className="gallery-empty">
+          <p>Nuk ka ende fotografi në këtë kategori.</p>
+          <p>Zgjidhni një kategori tjetër ose dërgoni një fotografi të re për këtë seksion.</p>
+        </div>
+      ) : (
+        <div className="gallery-empty">
+          <p>Arkivi fotografik po nis me kujtimet tuaja.</p>
+          <p>Fotografi të Topanicës nga familjet, rrugët dhe peizazhi i fshatit do ta pasurojnë këtë galeri.</p>
+        </div>
+      )}
+
+      {selected && selectedIndex !== null && (
+        <div
+          className="lightbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label={selected.title}
+          tabIndex={-1}
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setSelectedIndex(null);
+          }}
+        >
+          <button
+            ref={closeRef}
+            type="button"
+            className="lightbox-close"
+            aria-label="Mbyll pamjen"
+            onClick={() => setSelectedIndex(null)}
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M18 6 6 18" />
+              <path d="m6 6 12 12" />
+            </svg>
+          </button>
+
+          {visible.length > 1 && (
+            <button
+              type="button"
+              className="lightbox-nav lightbox-prev"
+              aria-label="Fotografia e mëparshme"
+              onClick={() => setSelectedIndex((index) => (index === null ? null : (index - 1 + visible.length) % visible.length))}
+            >
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+            </button>
+          )}
+
+          <div key={selected.id} className="lightbox-image">
+            <Image
+              src={selected.image_url}
+              alt={selected.title}
+              width={1800}
+              height={1350}
+              sizes="90vw"
+              unoptimized={selected.image_url.startsWith("http") || selected.image_url.startsWith("/api/")}
+            />
+          </div>
+
+          {visible.length > 1 && (
+            <button
+              type="button"
+              className="lightbox-nav lightbox-next"
+              aria-label="Fotografia tjetër"
+              onClick={() => setSelectedIndex((index) => (index === null ? null : (index + 1) % visible.length))}
+            >
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="m9 18 6-6-6-6" />
+              </svg>
+            </button>
+          )}
+
+          <p className="lightbox-caption">
+            <span>
+              {selected.title}
+              {selected.year_taken ? ` · ${selected.year_taken}` : ""}
+              {selected.credit ? ` · ${selected.credit}` : ""}
+            </span>
+            <span className="lightbox-counter">
+              {selectedIndex + 1} / {visible.length}
+            </span>
+          </p>
+        </div>
+      )}
+    </>
+  );
 }

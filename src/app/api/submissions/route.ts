@@ -57,11 +57,22 @@ function parseImageUrls(rawJson: string, fallbackSingle: string, attachmentUrl: 
 
 export async function POST(request: Request) {
   const origin = request.headers.get("origin");
-  if (origin && new URL(origin).host !== new URL(request.url).host) {
-    return NextResponse.json({ error: "Invalid origin" }, { status: 403 });
+  if (origin) {
+    try {
+      if (new URL(origin).host !== new URL(request.url).host) {
+        return NextResponse.json({ error: "Invalid origin" }, { status: 403 });
+      }
+    } catch {
+      return NextResponse.json({ error: "Invalid origin" }, { status: 403 });
+    }
   }
 
-  const form = await request.formData();
+  let form: FormData;
+  try {
+    form = await request.formData();
+  } catch {
+    return NextResponse.redirect(new URL("/kontribuo?error=invalid", request.url), 303);
+  }
   const parsed = submissionSchema.safeParse(Object.fromEntries(form.entries()));
   if (!parsed.success) {
     return NextResponse.redirect(new URL("/kontribuo?error=invalid", request.url), 303);

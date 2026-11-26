@@ -46,7 +46,13 @@ const formObject = (form: FormData) => Object.fromEntries([...form.entries()].fi
 
 export async function POST(request: Request) {
   try { await requireAdmin(); } catch { return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); }
-  const form = await request.formData();
+
+  let form: FormData;
+  try {
+    form = await request.formData();
+  } catch {
+    return NextResponse.json({ error: "Kërkesë e pavlefshme." }, { status: 400 });
+  }
   const action = String(form.get("action") || "");
   const values = formObject(form);
   let notice = "saved";
@@ -56,16 +62,20 @@ export async function POST(request: Request) {
       const data = articleSchema.parse(values);
       const status = data.status || "draft";
       const finalImage = data.image_url || data.cover_url || null;
-      const rawDate = data.published_at && data.published_at.trim() !== "" ? new Date(data.published_at.trim()).toISOString() : null;
+      let rawDate: string | null = null;
+      if (data.published_at && data.published_at.trim() !== "") {
+        const parsedDate = new Date(data.published_at.trim());
+        if (!Number.isNaN(parsedDate.getTime())) rawDate = parsedDate.toISOString();
+      }
       if (data.id) {
         await query(
-          "UPDATE articles SET title=$1,summary=$2,body=$3,category=$4,cover_url=$5,image_url=$5,source_name=$6,source_url=$7,source_type=$8,status=$9,published_at=COALESCE($10::timestamptz, CASE WHEN $9='published' THEN COALESCE(published_at, NOW()) ELSE published_at END),created_at=COALESCE($10::timestamptz, created_at) WHERE id=$11",
+          "UPDATE articles SET title=$1,summary=$2,body=$3,category=$4,cover_url=$5,image_url=$5,source_name=$6,source_url=$7,source_type=$8,status=$9,published_at=COALESCE($10::timestamptz, CASE WHEN $9='published' THEN COALESCE(published_at, NOW()) ELSE published_at END) WHERE id=$11",
           [data.title, data.summary, data.body, data.category, finalImage, data.source_name || null, data.source_url || null, data.source_type, status, rawDate, data.id],
         );
       } else {
         const slug = `${slugify(data.title) || "lajm-topanica"}-${randomUUID()}`;
         await query(
-          "INSERT INTO articles (slug,title,summary,body,category,cover_url,image_url,source_name,source_url,source_type,is_auto_scraped,status,published_at,created_at) VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9,FALSE,$10,COALESCE($11::timestamptz, CASE WHEN $10='published' THEN NOW() ELSE NULL END),COALESCE($11::timestamptz, NOW()))",
+          "INSERT INTO articles (slug,title,summary,body,category,cover_url,image_url,source_name,source_url,source_type,is_auto_scraped,status,published_at) VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9,FALSE,$10,COALESCE($11::timestamptz, CASE WHEN $10='published' THEN NOW() ELSE NULL END))",
           [slug, data.title, data.summary, data.body, data.category, finalImage, data.source_name || null, data.source_url || null, data.source_type, status, rawDate],
         );
       }
@@ -106,7 +116,7 @@ export async function POST(request: Request) {
     } else if (action === "submission-convert-photo") {
       const data = submissionConvertSchema.parse(values);
       const subRows = await query<{ sender_name: string; message: string; attachment_url: string | null; image_url: string | null; image_urls: string[] | null }>(
-        "UPDATE submissions SET status='approved' WHERE id=$1 AND status='pending' RETURNING sender_name, message, attachment_url, image_url, image_urls",
+        "SELECT sender_name, message, attachment_url, image_url, image_urls FROM submissions WHERE id=$1 AND status='pending' LIMIT 1",
         [data.id],
       );
       const sub = subRows[0];
@@ -129,6 +139,7 @@ export async function POST(request: Request) {
           [title, photoUrl, credit],
         );
       }
+      await query("UPDATE submissions SET status='approved' WHERE id=$1 AND status='pending'", [data.id]);
       notice = "converted";
     } else if (action === "submission-convert-history") {
       const data = submissionConvertSchema.parse(values);
@@ -160,7 +171,10 @@ export async function POST(request: Request) {
 
   const current = new URL(request.url);
   const referer = request.headers.get("referer");
-  const returnTo = referer ? new URL(referer) : null;
+  let returnTo: URL | null = null;
+  if (referer) {
+    try { returnTo = new URL(referer); } catch { returnTo = null; }
+  }
   const destination = returnTo?.host === current.host ? returnTo : new URL("/admin?tab=news", request.url);
   if (action === "article-save") {
     destination.pathname = "/admin";

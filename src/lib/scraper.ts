@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import Parser from "rss-parser";
 import { query } from "@/lib/db";
-import { slugify } from "@/lib/site";
+import { isValidArticleCover, slugify } from "@/lib/site";
 import { z } from "zod";
 
 const parser = new Parser({
@@ -82,7 +82,7 @@ function normalizeUrl(value: string): string | null {
 function isValidImageUrl(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
-  if (!trimmed) return null;
+  if (!trimmed || !isValidArticleCover(trimmed)) return null;
   try {
     const parsed = new URL(trimmed);
     if (!["http:", "https:"].includes(parsed.protocol)) return null;

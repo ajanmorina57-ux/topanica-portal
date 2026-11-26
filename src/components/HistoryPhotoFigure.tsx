@@ -55,10 +55,28 @@ export function HistoryPhotoFigure({ src, alt, caption }: HistoryPhotoFigureProp
             alt={alt}
             width={900}
             height={1200}
+            sizes="(max-width: 900px) 100vw, 310px"
             className="history-plate-img"
             unoptimized={unoptimized}
           />
-          <span className="history-plate-hint">Shiko në madhësi të plotë</span>
+          <span className="history-plate-hint">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+              <path d="M11 8v6M8 11h6" />
+            </svg>
+            Shiko në madhësi të plotë
+          </span>
         </button>
         {caption && <figcaption className="history-plate-caption">{caption}</figcaption>}
       </figure>
@@ -77,21 +95,33 @@ export function HistoryPhotoFigure({ src, alt, caption }: HistoryPhotoFigureProp
             ref={closeRef}
             type="button"
             className="lightbox-close"
-            aria-label="Mbyll dokumentin"
+            aria-label="Mbyll pamjen"
             onClick={() => setOpen(false)}
           >
-            ×
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M18 6 6 18" />
+              <path d="m6 6 12 12" />
+            </svg>
           </button>
           <div className="lightbox-image">
-            <Image
-              src={src}
-              alt={alt}
-              width={1400}
-              height={1800}
-              unoptimized={unoptimized}
-            />
+            <Image src={src} alt={alt} width={1400} height={1800} sizes="90vw" unoptimized={unoptimized} />
           </div>
-          <p>{alt}{caption ? ` · ${caption}` : ""}</p>
+          <p className="lightbox-caption">
+            <span>
+              {alt}
+              {caption ? ` · ${caption}` : ""}
+            </span>
+          </p>
         </div>
       )}
     </>

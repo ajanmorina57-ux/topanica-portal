@@ -23,8 +23,8 @@ type UploadItem = {
   error?: string;
 };
 
-const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB selected limit
-const CLIENT_COMPRESS_THRESHOLD = 3.5 * 1024 * 1024; // Keep payloads well under Vercel's 4.5 MB body limit
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+const CLIENT_COMPRESS_THRESHOLD = 3.5 * 1024 * 1024;
 const MAX_DIMENSION = 1920;
 
 async function prepareImageForUpload(file: File): Promise<File> {
@@ -59,7 +59,6 @@ async function prepareImageForUpload(file: File): Promise<File> {
       bitmap.close();
     }
   } catch {
-    // Fall back to original file (e.g. HEIC that browser canvas can't decode) so sharp handles it server-side
     return file;
   }
 }
@@ -80,6 +79,7 @@ export function PhotoDropzone({
   hint,
 }: PhotoDropzoneProps) {
   const inputId = useId();
+  const labelId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [imageUrl, setImageUrl] = useState<string>(defaultValue);
@@ -107,7 +107,7 @@ export function PhotoDropzone({
     hint ||
     (multiple
       ? `Tërhiqni dhe lëshoni një ose më shumë fotografi këtu, ose klikoni për të zgjedhur (deri në ${maxFiles} foto, max 10 MB secila). Do të konvertohen automatikisht në WebP.`
-      : "Tërhiq dhe lësho fotografinë këtu, ose kliko për të zgjedhur (.jpg, .png, .webp). Do të konvertohet automatikisht në WebP.");
+      : "Tërhiqni dhe lëshoni fotografinë këtu, ose klikoni për të zgjedhur (.jpg, .png, .webp). Do të konvertohet automatikisht në WebP.");
 
   async function uploadSingleToApi(file: File): Promise<string> {
     if (!file.type.startsWith("image/")) {
@@ -142,7 +142,7 @@ export function PhotoDropzone({
       setError("Skedari i zgjedhur nuk është fotografi.");
       return;
     }
-    if (file.size > 10 * 1024 * 1024) {
+    if (file.size > MAX_UPLOAD_BYTES) {
       setError("Madhësia e fotografisë nuk duhet të kalojë 10 MB.");
       return;
     }
@@ -161,6 +161,7 @@ export function PhotoDropzone({
       setError(err instanceof Error ? err.message : "Ndodhi një gabim gjatë ngarkimit.");
       setPreviewUrl(imageUrl);
     } finally {
+      URL.revokeObjectURL(objectUrl);
       setIsUploading(false);
     }
   };
@@ -184,11 +185,11 @@ export function PhotoDropzone({
     const pendingItems: Array<{ file: File; item: UploadItem }> = [];
     for (const file of selected) {
       if (!file.type.startsWith("image/")) {
-        setError(`"${file.name}" nuk është fotografi e vlefshme.`);
+        setError(`“${file.name}” nuk është fotografi e vlefshme.`);
         continue;
       }
-      if (file.size > 10 * 1024 * 1024) {
-        setError(`"${file.name}" e kalon kufirin prej 10 MB.`);
+      if (file.size > MAX_UPLOAD_BYTES) {
+        setError(`“${file.name}” e kalon kufirin prej 10 MB.`);
         continue;
       }
       pendingItems.push({
@@ -210,6 +211,7 @@ export function PhotoDropzone({
       pendingItems.map(async ({ file, item }) => {
         try {
           const url = await uploadSingleToApi(file);
+          URL.revokeObjectURL(item.previewUrl);
           setItems((prev) => {
             const next = prev.map((existing) =>
               existing.id === item.id
@@ -222,6 +224,7 @@ export function PhotoDropzone({
             return next;
           });
         } catch (err) {
+          URL.revokeObjectURL(item.previewUrl);
           const message = err instanceof Error ? err.message : "Dështoi ngarkimi.";
           setError(message);
           setItems((prev) => prev.filter((existing) => existing.id !== item.id));
@@ -251,6 +254,13 @@ export function PhotoDropzone({
     setIsDragging(false);
   };
 
+  const handleDropzoneKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      fileInputRef.current?.click();
+    }
+  };
+
   const handleRemoveSingle = (e: React.MouseEvent) => {
     e.preventDefault();
     setImageUrl("");
@@ -276,7 +286,7 @@ export function PhotoDropzone({
 
     return (
       <div className="photo-dropzone-wrapper">
-        <label htmlFor={inputId} className="photo-dropzone-label">
+        <label id={labelId} htmlFor={inputId} className="photo-dropzone-label">
           {label}
         </label>
 
@@ -284,17 +294,22 @@ export function PhotoDropzone({
         {name !== "image_url" && <input type="hidden" name="image_url" value={uploadedUrls[0] || ""} />}
 
         <div
+          role="button"
+          tabIndex={0}
+          aria-labelledby={labelId}
           className={`photo-dropzone-area ${isDragging ? "dragging" : ""} ${anyUploading ? "uploading" : ""}`}
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onClick={() => fileInputRef.current?.click()}
+          onKeyDown={handleDropzoneKeyDown}
         >
           <input
             id={inputId}
             ref={fileInputRef}
             type="file"
             multiple
+            tabIndex={-1}
             accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/heic,image/heif"
             className="photo-dropzone-input"
             onChange={(e) => {
@@ -315,6 +330,7 @@ export function PhotoDropzone({
               strokeWidth="1.5"
               strokeLinecap="round"
               strokeLinejoin="round"
+              aria-hidden="true"
             >
               <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
               <circle cx="8.5" cy="8.5" r="1.5" />
@@ -322,10 +338,10 @@ export function PhotoDropzone({
             </svg>
             <p className="photo-dropzone-title">
               {isDragging
-                ? "Lëshoni fotografitë këtu..."
+                ? "Lëshoni fotografitë këtu…"
                 : items.length > 0
-                  ? `Shto fotografi të tjera (${uploadedUrls.length}/${maxFiles} të ngarkuara)`
-                  : "Zgjidh ose tërhiq fotografitë këtu"}
+                  ? `Shtoni fotografi të tjera (${uploadedUrls.length}/${maxFiles} të ngarkuara)`
+                  : "Zgjidhni ose tërhiqni fotografitë këtu"}
             </p>
             <p className="photo-dropzone-hint">{resolvedHint}</p>
           </div>
@@ -347,13 +363,13 @@ export function PhotoDropzone({
                   {item.uploading && (
                     <div className="photo-preview-overlay">
                       <span className="upload-spinner" />
-                      <p>Po ruhet...</p>
+                      <p>Po ruhet…</p>
                     </div>
                   )}
                 </div>
                 <div className="photo-preview-actions">
                   <span className="photo-status-badge">
-                    {item.uploadedUrl ? `✓ Foto ${idx + 1}` : "Duke u ngarkuar..."}
+                    {item.uploadedUrl ? `✓ Foto ${idx + 1}` : "Duke u ngarkuar…"}
                   </span>
                   <button
                     type="button"
@@ -369,14 +385,18 @@ export function PhotoDropzone({
           </div>
         )}
 
-        {error && <p className="photo-dropzone-error" role="alert">{error}</p>}
+        {error && (
+          <p className="photo-dropzone-error" role="alert">
+            {error}
+          </p>
+        )}
       </div>
     );
   }
 
   return (
     <div className="photo-dropzone-wrapper">
-      <label htmlFor={inputId} className="photo-dropzone-label">
+      <label id={labelId} htmlFor={inputId} className="photo-dropzone-label">
         {label}
       </label>
 
@@ -396,13 +416,13 @@ export function PhotoDropzone({
             {isUploading && (
               <div className="photo-preview-overlay">
                 <span className="upload-spinner" />
-                <p>Po konvertohet në WebP dhe po ruhet...</p>
+                <p>Po konvertohet në WebP dhe po ruhet…</p>
               </div>
             )}
           </div>
           <div className="photo-preview-actions">
             <span className="photo-status-badge">
-              {imageUrl ? "✓ Ruajtur në WebP" : isUploading ? "Duke u përpunuar..." : "E papërfunduar"}
+              {imageUrl ? "✓ Ruajtur në WebP" : isUploading ? "Duke u përpunuar…" : "E papërfunduar"}
             </span>
             <button
               type="button"
@@ -410,22 +430,27 @@ export function PhotoDropzone({
               className="photo-remove-btn"
               disabled={isUploading}
             >
-              Largo fotografinë
+              Largoni fotografinë
             </button>
           </div>
         </div>
       ) : (
         <div
+          role="button"
+          tabIndex={0}
+          aria-labelledby={labelId}
           className={`photo-dropzone-area ${isDragging ? "dragging" : ""} ${isUploading ? "uploading" : ""}`}
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onClick={() => fileInputRef.current?.click()}
+          onKeyDown={handleDropzoneKeyDown}
         >
           <input
             id={inputId}
             ref={fileInputRef}
             type="file"
+            tabIndex={-1}
             accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/heic,image/heif"
             className="photo-dropzone-input"
             onChange={(e) => {
@@ -445,20 +470,25 @@ export function PhotoDropzone({
               strokeWidth="1.5"
               strokeLinecap="round"
               strokeLinejoin="round"
+              aria-hidden="true"
             >
               <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
               <circle cx="8.5" cy="8.5" r="1.5" />
               <polyline points="21 15 16 10 5 21" />
             </svg>
             <p className="photo-dropzone-title">
-              {isDragging ? "Lësho fotografinë këtu..." : "Zgjidh ose tërhiq një fotografi"}
+              {isDragging ? "Lëshoni fotografinë këtu…" : "Zgjidhni ose tërhiqni një fotografi"}
             </p>
             <p className="photo-dropzone-hint">{resolvedHint}</p>
           </div>
         </div>
       )}
 
-      {error && <p className="photo-dropzone-error" role="alert">{error}</p>}
+      {error && (
+        <p className="photo-dropzone-error" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

@@ -3,7 +3,15 @@ import { safeQuery } from "@/lib/db";
 import { isAdmin } from "@/lib/auth";
 import type { Article } from "@/lib/models";
 import { NewsArchive } from "@/components/NewsArchive";
-export const metadata: Metadata = { title: "Lajme" };
+const title = "Lajme";
+const description = "Njoftime, iniciativa dhe rrëfime nga jeta e përditshme e fshatit Topanicë dhe Komunës së Kamenicës.";
+
+export const metadata: Metadata = {
+  title,
+  description,
+  alternates: { canonical: "/lajme" },
+  openGraph: { title: `${title} — Topanicë`, description, url: "/lajme" },
+};
 export const dynamic = "force-dynamic";
 export default async function NewsPage() {
   const [articles, isAdministrator] = await Promise.all([

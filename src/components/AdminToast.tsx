@@ -4,8 +4,12 @@ import { useEffect, useState } from "react";
 
 type Toast = { message: string; kind: "success" | "error" };
 const notices: Record<string, string> = {
-  saved: "U ruajt.", published: "Artikulli u publikua.", deleted: "U fshi.",
-  approved: "Kontributi u miratua.", rejected: "Kontributi u refuzua.", converted: "Kontributi u kthye në përmbajtje draft.",
+  saved: "U ruajt.",
+  published: "Artikulli u publikua.",
+  deleted: "U fshi.",
+  approved: "Kontributi u miratua.",
+  rejected: "Kontributi u refuzua.",
+  converted: "Kontributi u shndërrua dhe u shtua.",
 };
 
 export function showAdminToast(message: string, kind: Toast["kind"] = "success") {
@@ -14,6 +18,7 @@ export function showAdminToast(message: string, kind: Toast["kind"] = "success")
 
 export function AdminToast() {
   const [toast, setToast] = useState<Toast | null>(null);
+
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const show = (next: Toast) => {
@@ -29,7 +34,11 @@ export function AdminToast() {
       show({ message: notices[notice], kind: "success" });
       params.delete("notice");
       const query = params.toString();
-      window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`);
+      window.history.replaceState(
+        null,
+        "",
+        `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`,
+      );
     }
     return () => {
       window.removeEventListener("topanica:admin-toast", onToast);
@@ -38,5 +47,9 @@ export function AdminToast() {
   }, []);
 
   if (!toast) return null;
-  return <div className={`admin-toast ${toast.kind}`} role={toast.kind === "error" ? "alert" : "status"}>{toast.message}</div>;
+  return (
+    <div className={`admin-toast ${toast.kind}`} role={toast.kind === "error" ? "alert" : "status"}>
+      {toast.message}
+    </div>
+  );
 }
