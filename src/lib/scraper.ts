@@ -30,8 +30,23 @@ type Candidate = {
 
 const feeds = [
   {
-    url: "https://news.google.com/rss/search?q=Topanicë+OR+Topanica+Kamenicë&hl=sq&gl=XK&ceid=XK:sq",
+    url: "https://news.google.com/rss/search?q=Topanic%C3%AB+OR+Topanica+Kamenic%C3%AB&hl=sq&gl=XK&ceid=XK:sq",
     sourceName: "Google News",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site%3Artklive.com+(Topanic%C3%AB+OR+Topanica)&hl=sq&gl=XK&ceid=XK:sq",
+    sourceName: "RTK (rtklive.com)",
+    filter: /topanicë|topanica|rexhep\s+mala/i,
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site%3Akoha.net+(Topanic%C3%AB+OR+Topanica)&hl=sq&gl=XK&ceid=XK:sq",
+    sourceName: "Kohavision / Koha.net",
+    filter: /topanicë|topanica|rexhep\s+mala/i,
+  },
+  {
+    url: "https://www.rtklive.com/sq/feed/",
+    sourceName: "RTK (rtklive.com)",
+    filter: /topanicë|topanica|rexhep\s+mala/i,
   },
   {
     url: "https://rajonipress.com/?s=Topanic%C3%AB&feed=rss2",
@@ -194,9 +209,25 @@ async function collectMunicipalPosts(): Promise<Candidate[]> {
   }
 }
 
-async function collectTavily(queryText: string): Promise<Candidate[]> {
+async function collectTavily(
+  queryText: string,
+  options: {
+    days?: number;
+    timeRange?: "day" | "week" | "month" | "year";
+    maxResults?: number;
+    sourceName?: string;
+    filter?: RegExp;
+  } = {},
+): Promise<Candidate[]> {
   const apiKey = process.env.TAVILY_API_KEY;
   if (!apiKey) return [];
+  const {
+    days = 7,
+    timeRange = "week",
+    maxResults = 5,
+    sourceName = "Tavily Search",
+    filter,
+  } = options;
   try {
     const response = await fetch("https://api.tavily.com/search", {
       method: "POST",
@@ -206,9 +237,9 @@ async function collectTavily(queryText: string): Promise<Candidate[]> {
         query: queryText,
         search_depth: "basic",
         topic: "news",
-        days: 7,
-        time_range: "week",
-        max_results: 5,
+        days,
+        time_range: timeRange,
+        max_results: maxResults,
         include_images: true,
       }),
       signal: AbortSignal.timeout(15000),
@@ -226,8 +257,9 @@ async function collectTavily(queryText: string): Promise<Candidate[]> {
     };
     return (payload.results || []).flatMap((result, index) => {
       const title = cleanText(result.title, 500);
+      const snippet = cleanText(result.content || "");
       const url = result.url ? normalizeUrl(result.url) : null;
-      if (!title || !url) return [];
+      if (!title || !url || (filter && !filter.test(`${title} ${snippet}`))) return [];
 
       let coverUrl: string | null = null;
       if (Array.isArray(result.images) && result.images[0]) {
@@ -239,9 +271,9 @@ async function collectTavily(queryText: string): Promise<Candidate[]> {
 
       return [{
         title,
-        snippet: cleanText(result.content || ""),
+        snippet,
         url,
-        sourceName: "Tavily Search",
+        sourceName,
         sourceType: "tavily" as const,
         publishedAt: result.published_date,
         coverUrl,
@@ -302,6 +334,28 @@ export async function runScraper() {
     ...feeds.map((feed) => ({ name: feed.sourceName, load: () => collectRss(feed.url, feed.sourceName, feed.filter) })),
     { name: "Municipal WordPress API", load: collectMunicipalPosts },
     { name: "Tavily local news", load: () => collectTavily("Topanicë OR Topanica Kamenicë lajme") },
+    {
+      name: "Tavily RTKLive",
+      load: () =>
+        collectTavily("site:rtklive.com Topanicë OR Topanica", {
+          days: 30,
+          timeRange: "month",
+          maxResults: 8,
+          sourceName: "RTK (rtklive.com)",
+          filter: municipalTerms,
+        }),
+    },
+    {
+      name: "Tavily Kohavision",
+      load: () =>
+        collectTavily("site:koha.net Topanicë OR Topanica", {
+          days: 30,
+          timeRange: "month",
+          maxResults: 8,
+          sourceName: "Kohavision / Koha.net",
+          filter: municipalTerms,
+        }),
+    },
     { name: "Tavily public Facebook search", load: () => collectTavily("site:facebook.com Topanicë OR Topanica Kamenicë") },
   ];
   const sourceResults = await Promise.all(sourceTasks.map(async (task) => {
@@ -321,18 +375,34 @@ export async function runScraper() {
   }
   const allUnique = [...unique.values()];
   const checked = allUnique.length;
-  if (allUnique.length > MAX_CANDIDATES) skipped += allUnique.length - MAX_CANDIDATES;
 
   let status: "published" | "draft";
+  let freshCandidates: Candidate[] = [];
   try {
     const setting = await query<{ value: string }>("SELECT value FROM site_settings WHERE key='auto_publish_news' LIMIT 1");
     status = setting[0]?.value === "true" ? "published" : "draft";
+    if (allUnique.length) {
+      const existingRows = await query<{ source_url: string }>(
+        "SELECT source_url FROM articles WHERE source_url = ANY($1::text[])",
+        [allUnique.map((c) => c.url)],
+      );
+      const seenUrls = new Set(existingRows.map((row) => row.source_url));
+      for (const candidate of allUnique) {
+        if (seenUrls.has(candidate.url)) skipped++;
+        else freshCandidates.push(candidate);
+      }
+    }
   } catch (error) {
     reportError("Database settings", error);
     return { checked, inserted, skipped: skipped + Math.min(allUnique.length, MAX_CANDIDATES), errors };
   }
 
-  await mapWithConcurrency(allUnique.slice(0, MAX_CANDIDATES), MAX_LLM_CONCURRENCY, async (candidate) => {
+  if (freshCandidates.length > MAX_CANDIDATES) {
+    skipped += freshCandidates.length - MAX_CANDIDATES;
+    freshCandidates = freshCandidates.slice(0, MAX_CANDIDATES);
+  }
+
+  await mapWithConcurrency(freshCandidates, MAX_LLM_CONCURRENCY, async (candidate) => {
     try {
       const existing = await query<{ id: number }>("SELECT id FROM articles WHERE source_url=$1 LIMIT 1", [candidate.url]);
       if (existing.length) { skipped++; return; }

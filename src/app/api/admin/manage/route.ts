@@ -5,25 +5,29 @@ import { query } from "@/lib/db";
 import { slugify } from "@/lib/site";
 import { z } from "zod";
 
+const imageOrUrl = z.string().trim().max(2000).refine((val) => /^(https?:\/\/|\/)/i.test(val), "Duhet të jetë URL ose shteg lokal");
 const httpUrl = z.string().url().max(2000).refine((value) => /^https?:\/\//i.test(value));
 const articleSchema = z.object({
   id: z.coerce.number().int().positive().optional(),
-  title: z.string().trim().min(5).max(240),
-  summary: z.string().trim().min(20).max(800),
-  body: z.string().trim().min(30).max(10000),
+  title: z.string().trim().min(3).max(240),
+  summary: z.string().trim().min(5).max(1200),
+  body: z.string().trim().min(10).max(25000),
   category: z.enum(["topanice", "komuna", "zhvillim", "mergata"]),
-  cover_url: httpUrl.optional().or(z.literal("")),
+  cover_url: imageOrUrl.optional().or(z.literal("")),
+  image_url: imageOrUrl.optional().or(z.literal("")),
   source_name: z.string().trim().max(240).optional().or(z.literal("")),
   source_url: httpUrl.optional().or(z.literal("")),
   source_type: z.enum(["rss", "tavily", "facebook_import", "manual"]).default("manual"),
   status: z.enum(["draft", "published"]).optional(),
+  published_at: z.string().trim().optional().or(z.literal("")),
 });
 const historySchema = z.object({
   id: z.coerce.number().int().positive().optional(),
   era_year: z.string().trim().min(1).max(80),
   title: z.string().trim().min(3).max(240),
   content: z.string().trim().min(20).max(6000),
-  source_citation: z.string().trim().max(1200).optional(),
+  image_url: imageOrUrl.optional().or(z.literal("")),
+  source_citation: z.string().trim().max(1200).optional().or(z.literal("")),
   sort_order: z.coerce.number().int().min(0).max(10000).default(100),
 });
 const photoSchema = z.object({
@@ -51,16 +55,18 @@ export async function POST(request: Request) {
     if (action === "article-save") {
       const data = articleSchema.parse(values);
       const status = data.status || "draft";
+      const finalImage = data.image_url || data.cover_url || null;
+      const rawDate = data.published_at && data.published_at.trim() !== "" ? new Date(data.published_at.trim()).toISOString() : null;
       if (data.id) {
         await query(
-          "UPDATE articles SET title=$1,summary=$2,body=$3,category=$4,cover_url=$5,source_name=$6,source_url=$7,source_type=$8,status=$9,published_at=CASE WHEN $9='published' THEN COALESCE(published_at,NOW()) ELSE NULL END WHERE id=$10",
-          [data.title, data.summary, data.body, data.category, data.cover_url || null, data.source_name || null, data.source_url || null, data.source_type, status, data.id],
+          "UPDATE articles SET title=$1,summary=$2,body=$3,category=$4,cover_url=$5,image_url=$5,source_name=$6,source_url=$7,source_type=$8,status=$9,published_at=COALESCE($10::timestamptz, CASE WHEN $9='published' THEN COALESCE(published_at, NOW()) ELSE published_at END),created_at=COALESCE($10::timestamptz, created_at) WHERE id=$11",
+          [data.title, data.summary, data.body, data.category, finalImage, data.source_name || null, data.source_url || null, data.source_type, status, rawDate, data.id],
         );
       } else {
         const slug = `${slugify(data.title) || "lajm-topanica"}-${randomUUID()}`;
         await query(
-          "INSERT INTO articles (slug,title,summary,body,category,cover_url,source_name,source_url,source_type,is_auto_scraped,status,published_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,FALSE,$10,CASE WHEN $10='published' THEN NOW() ELSE NULL END)",
-          [slug, data.title, data.summary, data.body, data.category, data.cover_url || null, data.source_name || null, data.source_url || null, data.source_type, status],
+          "INSERT INTO articles (slug,title,summary,body,category,cover_url,image_url,source_name,source_url,source_type,is_auto_scraped,status,published_at,created_at) VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9,FALSE,$10,COALESCE($11::timestamptz, CASE WHEN $10='published' THEN NOW() ELSE NULL END),COALESCE($11::timestamptz, NOW()))",
+          [slug, data.title, data.summary, data.body, data.category, finalImage, data.source_name || null, data.source_url || null, data.source_type, status, rawDate],
         );
       }
       notice = status === "published" ? "published" : "saved";
@@ -70,8 +76,9 @@ export async function POST(request: Request) {
       notice = data.status === "published" ? "published" : "saved";
     } else if (action === "history-save") {
       const data = historySchema.parse(values);
-      if (data.id) await query("UPDATE history_entries SET era_year=$1,title=$2,content=$3,source_citation=$4,sort_order=$5 WHERE id=$6", [data.era_year, data.title, data.content, data.source_citation || null, data.sort_order, data.id]);
-      else await query("INSERT INTO history_entries (era_year,title,content,source_citation,sort_order) VALUES ($1,$2,$3,$4,$5)", [data.era_year, data.title, data.content, data.source_citation || null, data.sort_order]);
+      const img = data.image_url || null;
+      if (data.id) await query("UPDATE history_entries SET era_year=$1,title=$2,content=$3,source_citation=$4,sort_order=$5,image_url=$6 WHERE id=$7", [data.era_year, data.title, data.content, data.source_citation || null, data.sort_order, img, data.id]);
+      else await query("INSERT INTO history_entries (era_year,title,content,source_citation,sort_order,image_url) VALUES ($1,$2,$3,$4,$5,$6)", [data.era_year, data.title, data.content, data.source_citation || null, data.sort_order, img]);
     } else if (action === "photo-save") {
       const data = photoSchema.parse(values);
       const year = data.year_taken === "" ? null : data.year_taken;
@@ -86,11 +93,11 @@ export async function POST(request: Request) {
       const rows = await query<{ id: number }>(
         `WITH approved AS (
           UPDATE submissions SET status='approved' WHERE id=$1 AND status='pending'
-          RETURNING message
+          RETURNING message, attachment_url, image_url
         )
-        INSERT INTO articles (slug,title,summary,body,category,source_name,source_type,is_auto_scraped,status)
+        INSERT INTO articles (slug,title,summary,body,category,cover_url,image_url,source_name,source_type,is_auto_scraped,status)
         SELECT $2, left(regexp_replace(message, '[[:space:]]+', ' ', 'g'), 140), left(message, 320), message,
-          'topanice', 'Kontribut i komunitetit', 'manual', FALSE, 'draft' FROM approved
+          'topanice', COALESCE(image_url, attachment_url), COALESCE(image_url, attachment_url), 'Kontribut i komunitetit', 'manual', FALSE, 'draft' FROM approved
         RETURNING id`,
         [data.id, `kontribut-topanice-${randomUUID()}`],
       );
@@ -98,19 +105,45 @@ export async function POST(request: Request) {
       notice = "converted";
     } else if (action === "submission-convert-photo") {
       const data = submissionConvertSchema.parse(values);
+      const subRows = await query<{ sender_name: string; message: string; attachment_url: string | null; image_url: string | null; image_urls: string[] | null }>(
+        "UPDATE submissions SET status='approved' WHERE id=$1 AND status='pending' RETURNING sender_name, message, attachment_url, image_url, image_urls",
+        [data.id],
+      );
+      const sub = subRows[0];
+      if (!sub) throw new Error("Kontributi nuk është më në pritje.");
+      const urls = new Set<string>();
+      if (Array.isArray(sub.image_urls)) {
+        for (const u of sub.image_urls) {
+          if (typeof u === "string" && u.trim()) urls.add(u.trim());
+        }
+      }
+      if (sub.image_url?.trim()) urls.add(sub.image_url.trim());
+      if (sub.attachment_url?.trim()) urls.add(sub.attachment_url.trim());
+      if (!urls.size) throw new Error("Ky kontribut nuk ka një fotografi.");
+
+      const title = sub.message.replace(/\s+/g, " ").trim().slice(0, 240) || "Pamje nga Topanica";
+      const credit = sub.sender_name.slice(0, 500);
+      for (const photoUrl of urls) {
+        await query(
+          "INSERT INTO gallery_photos (title,category,image_url,credit) VALUES ($1,'fshati',$2,$3)",
+          [title, photoUrl, credit],
+        );
+      }
+      notice = "converted";
+    } else if (action === "submission-convert-history") {
+      const data = submissionConvertSchema.parse(values);
       const rows = await query<{ id: number }>(
         `WITH approved AS (
-          UPDATE submissions SET status='approved' WHERE id=$1 AND status='pending' AND type='foto'
-            AND attachment_url ~* '^https?://'
-          RETURNING sender_name, message, attachment_url
+          UPDATE submissions SET status='approved' WHERE id=$1 AND status='pending'
+          RETURNING sender_name, message, attachment_url, image_url
         )
-        INSERT INTO gallery_photos (title,category,image_url,credit)
-        SELECT left(regexp_replace(message, '[[:space:]]+', ' ', 'g'), 240), 'fshati', attachment_url,
-          left(sender_name, 500) FROM approved
+        INSERT INTO history_entries (era_year,title,content,source_citation,image_url,sort_order)
+        SELECT 'Kujtesë', left(regexp_replace(message, '[[:space:]]+', ' ', 'g'), 120), message,
+          'Dërguar nga ' || sender_name, COALESCE(image_url, attachment_url), 100 FROM approved
         RETURNING id`,
         [data.id],
       );
-      if (!rows.length) throw new Error("Ky kontribut nuk ka një lidhje fotografie të vlefshme.");
+      if (!rows.length) throw new Error("Kontributi nuk është më në pritje.");
       notice = "converted";
     } else if (action === "delete") {
       const data = deleteSchema.parse(values);
@@ -129,6 +162,15 @@ export async function POST(request: Request) {
   const referer = request.headers.get("referer");
   const returnTo = referer ? new URL(referer) : null;
   const destination = returnTo?.host === current.host ? returnTo : new URL("/admin?tab=news", request.url);
+  if (action === "article-save") {
+    destination.pathname = "/admin";
+    destination.searchParams.set("tab", "news");
+    destination.searchParams.delete("edit");
+    const savedStatus = String(values.status || "");
+    if (savedStatus === "published" || savedStatus === "draft") {
+      destination.searchParams.set("status", savedStatus);
+    }
+  }
   destination.searchParams.set("notice", notice);
   return NextResponse.redirect(destination, 303);
 }

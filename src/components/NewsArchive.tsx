@@ -8,7 +8,7 @@ import { CATEGORY_LABELS, formatDate } from "@/lib/site";
 import { Reveal } from "@/components/Motion";
 
 const filters = [["all", "Të gjitha"], ["topanice", "Topanicë"], ["komuna", "Komuna"], ["zhvillim", "Zhvillim"], ["mergata", "Mërgata"]] as const;
-export function NewsArchive({ articles }: { articles: Article[] }) {
+export function NewsArchive({ articles, isAdmin = false }: { articles: Article[]; isAdmin?: boolean }) {
   const [filter, setFilter] = useState<string>("all");
   const filtered = useMemo(() => filter === "all" ? articles : articles.filter((a) => a.category === filter), [articles, filter]);
   return <>
@@ -16,7 +16,10 @@ export function NewsArchive({ articles }: { articles: Article[] }) {
     {filtered.length ? <div className="article-list">{filtered.map((article, index) => <Reveal key={article.id} delay={index % 4 * 0.045}><article className="article-row" >
       <div className="article-meta"><span>{CATEGORY_LABELS[article.category]}</span><time dateTime={article.published_at ?? article.created_at}>{formatDate(article.published_at ?? article.created_at)}</time></div>
       <div className="article-copy"><h2><Link href={`/lajme/${article.slug}`}>{article.title}</Link></h2><p>{article.summary}</p></div>
-      <Link className="row-arrow" aria-label={`Lexo: ${article.title}`} href={`/lajme/${article.slug}`}>↗</Link>
+      <div className="article-row-actions">
+        {isAdmin && <Link className="news-admin-edit-link" href={`/admin?tab=news&status=${article.status}&edit=${article.id}#article-form`}>Redakto</Link>}
+        <Link className="row-arrow" aria-label={`Lexo: ${article.title}`} href={`/lajme/${article.slug}`}>↗</Link>
+      </div>
     </article></Reveal>)}</div> : <p className="empty-note">Nuk ka lajme në këtë rubrikë.</p>}
   </>;
 }
