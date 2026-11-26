@@ -44,14 +44,14 @@ export function AdminImporter() {
   }
 
   return <section className="admin-form-block importer-panel" aria-labelledby="importer-title">
-    <div className="importer-heading"><div><p className="section-kicker">Facebook · njoftime · artikuj</p><h3 id="importer-title">Formatim me AI</h3><p>Ngjisni tekstin e një postimi ose lidhjen e një artikulli. Për lidhje kërkohet Tavily; postimet mund të ngjiten direkt.</p></div><span className="importer-index">01 / 02</span></div>
+    <div className="importer-heading"><div><p className="section-kicker">Facebook, njoftime dhe artikuj</p><h3 id="importer-title">Përgatit artikullin</h3><p>Ngjisni tekstin e një postimi ose lidhjen e një artikulli. Për lidhje kërkohet Tavily; postimet mund të ngjiten direkt.</p></div><span className="importer-index">01 / 02</span></div>
     <div className="admin-form importer-form">
       <label>Lidhja e artikullit (opsionale)<input type="url" value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://…" /></label>
       <label>Emri i burimit (opsional)<input value={sourceName} onChange={(event) => setSourceName(event.target.value)} placeholder="p.sh. Shoqata Topanica" /></label>
       <label>Lloji i burimit<select value={sourceType} onChange={(event) => setSourceType(event.target.value as "manual" | "facebook_import")}><option value="manual">Tekst i ngjitur / tjetër</option><option value="facebook_import">Postim nga Facebook</option></select></label>
-      <label className="importer-text">Teksti i postimit ose njoftimit<textarea value={text} onChange={(event) => setText(event.target.value)} rows={5} placeholder="Ngjisni këtu tekstin nga Facebook, shkolla, xhamia, KEDS-i ose një njoftim tjetër…" /></label>
+      <label className="importer-text">Teksti i postimit ose njoftimit<textarea value={text} onChange={(event) => setText(event.target.value)} rows={5} placeholder="Ngjisni këtu tekstin nga Facebook, shkolla, xhamia, KEDS-i ose një njoftim tjetër" /></label>
       {error && <p className="admin-error importer-error" role="alert">{error}</p>}
-      <button type="button" className="button button-dark" onClick={formatWithAi} disabled={working || (!sourceUrl.trim() && text.trim().length < 30)}>{working ? "Duke formatuar…" : "Format with AI"}</button>
+      <button type="button" className="button button-dark" onClick={formatWithAi} disabled={working || (!sourceUrl.trim() && text.trim().length < 30)}>{working ? "Duke përgatitur…" : "Formato me AI"}</button>
     </div>
   </section>;
 }

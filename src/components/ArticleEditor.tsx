@@ -67,7 +67,7 @@ export function ArticleEditor({ article }: { article?: Article }) {
         <p className="section-kicker">{draft.id ? `Redakto artikullin #${draft.id}` : "Redaktimi i përmbajtjes"}</p>
         <h3 id="article-editor-title">{draft.id ? `Redakto: ${draft.title.slice(0, 40)}${draft.title.length > 40 ? "..." : ""}` : "Artikull i ri"}</h3>
       </div>
-      {draft.id && <a className="text-link cancel-edit-link" href={`/admin?tab=news&status=${draft.status}`}>✕ Anulo redaktimin</a>}
+      {draft.id && <a className="text-link cancel-edit-link" href={`/admin?tab=news&status=${draft.status}`}>Anulo redaktimin</a>}
       {imported && <span className="editor-source">U përgatit me AI · draft</span>}
     </div>
     <form action="/api/admin/manage" method="post" className="admin-form">

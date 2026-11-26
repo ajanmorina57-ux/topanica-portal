@@ -82,7 +82,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       <form action="/admin" method="get" className="admin-search-form">
         <input type="hidden" name="tab" value="news" />
         <input type="hidden" name="status" value={status} />
-        <input type="search" name="q" defaultValue={searchQuery} placeholder="Kërko lajme të mëparshme sipas titullit ose burimit..." aria-label="Kërko lajme" />
+        <input type="search" name="q" defaultValue={searchQuery} placeholder="Kërko sipas titullit ose burimit" aria-label="Kërko lajme" />
         <button className="button button-dark" type="submit">Kërko</button>
         {searchQuery && <Link className="text-link" href={`/admin?tab=news&status=${status}`}>Pastro</Link>}
       </form>
@@ -93,7 +93,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
           <div className="admin-row-actions">
             {article.status === "published" && <Link className="admin-view-link" href={`/lajme/${article.slug}`}>Shiko ↗</Link>}
             {article.status === "draft" && <form action="/api/admin/manage" method="post"><input type="hidden" name="action" value="article-status" /><input type="hidden" name="id" value={article.id} /><input type="hidden" name="status" value="published" /><button className="admin-approve" type="submit">Mirato dhe publiko</button></form>}
-            <Link className={`admin-edit-link ${isEditing ? "active-edit" : ""}`} href={`/admin?tab=news&status=${status}${searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : ""}&edit=${article.id}#article-form`}>{isEditing ? "Po redaktohet ✏️" : "Redakto"}</Link><DeleteForm entity="article" id={article.id} />
+            <Link className={`admin-edit-link ${isEditing ? "active-edit" : ""}`} href={`/admin?tab=news&status=${status}${searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : ""}&edit=${article.id}#article-form`}>{isEditing ? "Duke u redaktuar" : "Redakto"}</Link><DeleteForm entity="article" id={article.id} />
           </div>
         </article>;
       })}{!filteredArticles.length && <p className="empty-note">Nuk ka artikuj në këtë listë.</p>}</div>
