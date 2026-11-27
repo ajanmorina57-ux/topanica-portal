@@ -1,4 +1,5 @@
 import { useId } from "react";
+import { useTranslations } from "next-intl";
 
 export function PlaceIllustration({
   className = "",
@@ -8,6 +9,8 @@ export function PlaceIllustration({
   decorative?: boolean;
 }) {
   const titleId = useId();
+  const t = useTranslations("Illustration");
+
   return (
     <svg
       className={className}
@@ -17,7 +20,7 @@ export function PlaceIllustration({
       aria-labelledby={decorative ? undefined : titleId}
       preserveAspectRatio="xMidYMid slice"
     >
-      {!decorative && <title id={titleId}>Ilustrim i rrafshit dhe kodrave të Anamoravës</title>}
+      {!decorative && <title id={titleId}>{t("title")}</title>}
       <rect width="1500" height="720" fill="#d8dfd5" />
       <path d="M0 340 185 218l128 81 160-176 179 186 172-137 176 158 167-215 163 140 170-101v366H0Z" fill="#a5b4a4" />
       <path d="m0 402 174-97 161 70 199-168 182 161 128-61 197 117 179-146 144 104 135-36v374H0Z" fill="#748b78" />

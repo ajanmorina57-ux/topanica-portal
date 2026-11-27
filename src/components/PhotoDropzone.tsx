@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import Image from "next/image";
+import { useTranslations } from "next-intl";
 
 interface PhotoDropzoneProps {
   name?: string;
@@ -75,9 +76,10 @@ export function PhotoDropzone({
   maxFiles = 12,
   onChange,
   onChangeMultiple,
-  label = "Fotografia",
+  label,
   hint,
 }: PhotoDropzoneProps) {
+  const t = useTranslations("Dropzone");
   const inputId = useId();
   const labelId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -103,23 +105,20 @@ export function PhotoDropzone({
     }
   }, [defaultValue, multiple]);
 
-  const resolvedHint =
-    hint ||
-    (multiple
-      ? `Tërhiqni dhe lëshoni një ose më shumë fotografi këtu, ose klikoni për të zgjedhur (deri në ${maxFiles} foto, max 10 MB secila). Do të konvertohen automatikisht në WebP.`
-      : "Tërhiqni dhe lëshoni fotografinë këtu, ose klikoni për të zgjedhur (.jpg, .png, .webp). Do të konvertohet automatikisht në WebP.");
+  const resolvedLabel = label ?? t("defaultLabel");
+  const resolvedHint = hint || (multiple ? t("hintMultiple", { maxFiles }) : t("hintSingle"));
 
   async function uploadSingleToApi(file: File): Promise<string> {
     if (!file.type.startsWith("image/")) {
-      throw new Error("Skedari i zgjedhur nuk është fotografi.");
+      throw new Error(t("errorNotImage"));
     }
     if (file.size > MAX_UPLOAD_BYTES) {
-      throw new Error("Madhësia e fotografisë nuk duhet të kalojë 10 MB.");
+      throw new Error(t("errorTooLarge"));
     }
 
     const preparedFile = await prepareImageForUpload(file);
     if (preparedFile.size > 4.4 * 1024 * 1024) {
-      throw new Error("Fotografia mbetet mbi 4.4 MB pas zvogëlimit. Ju lutemi zgjidhni një fotografi më të vogël.");
+      throw new Error(t("errorCompressedTooLarge"));
     }
 
     const formData = new FormData();
@@ -131,7 +130,7 @@ export function PhotoDropzone({
     });
     const data = await res.json();
     if (!res.ok || !data.url) {
-      throw new Error(data.error || "Dështoi ngarkimi i fotografisë.");
+      throw new Error(data.error || t("errorUploadFailed"));
     }
     return data.url as string;
   }
@@ -139,11 +138,11 @@ export function PhotoDropzone({
   const handleSingleFile = async (file: File) => {
     setError(null);
     if (!file.type.startsWith("image/")) {
-      setError("Skedari i zgjedhur nuk është fotografi.");
+      setError(t("errorNotImage"));
       return;
     }
     if (file.size > MAX_UPLOAD_BYTES) {
-      setError("Madhësia e fotografisë nuk duhet të kalojë 10 MB.");
+      setError(t("errorTooLarge"));
       return;
     }
 
@@ -158,7 +157,7 @@ export function PhotoDropzone({
       onChange?.(url);
     } catch (err) {
       console.error("Upload error:", err);
-      setError(err instanceof Error ? err.message : "Ndodhi një gabim gjatë ngarkimit.");
+      setError(err instanceof Error ? err.message : t("errorGeneric"));
       setPreviewUrl(imageUrl);
     } finally {
       URL.revokeObjectURL(objectUrl);
@@ -173,23 +172,23 @@ export function PhotoDropzone({
 
     const remainingSlots = maxFiles - items.length;
     if (remainingSlots <= 0) {
-      setError(`Mund të ngarkoni maksimumi ${maxFiles} fotografi.`);
+      setError(t("errorMaxFiles", { maxFiles }));
       return;
     }
 
     const selected = incoming.slice(0, remainingSlots);
     if (incoming.length > remainingSlots) {
-      setError(`Vetëm ${remainingSlots} fotografi të tjera u pranuan (maksimumi ${maxFiles}).`);
+      setError(t("errorPartialLimit", { remainingSlots, maxFiles }));
     }
 
     const pendingItems: Array<{ file: File; item: UploadItem }> = [];
     for (const file of selected) {
       if (!file.type.startsWith("image/")) {
-        setError(`“${file.name}” nuk është fotografi e vlefshme.`);
+        setError(t("errorFileInvalid", { name: file.name }));
         continue;
       }
       if (file.size > MAX_UPLOAD_BYTES) {
-        setError(`“${file.name}” e kalon kufirin prej 10 MB.`);
+        setError(t("errorFileTooLarge", { name: file.name }));
         continue;
       }
       pendingItems.push({
@@ -225,7 +224,7 @@ export function PhotoDropzone({
           });
         } catch (err) {
           URL.revokeObjectURL(item.previewUrl);
-          const message = err instanceof Error ? err.message : "Dështoi ngarkimi.";
+          const message = err instanceof Error ? err.message : t("errorUploadShort");
           setError(message);
           setItems((prev) => prev.filter((existing) => existing.id !== item.id));
         }
@@ -287,7 +286,7 @@ export function PhotoDropzone({
     return (
       <div className="photo-dropzone-wrapper">
         <label id={labelId} htmlFor={inputId} className="photo-dropzone-label">
-          {label}
+          {resolvedLabel}
         </label>
 
         <input type="hidden" name={name} value={JSON.stringify(uploadedUrls)} />
@@ -338,10 +337,10 @@ export function PhotoDropzone({
             </svg>
             <p className="photo-dropzone-title">
               {isDragging
-                ? "Lëshoni fotografitë këtu…"
+                ? t("dropMultiple")
                 : items.length > 0
-                  ? `Shtoni fotografi të tjera (${uploadedUrls.length}/${maxFiles} të ngarkuara)`
-                  : "Zgjidhni ose tërhiqni fotografitë këtu"}
+                  ? t("addMoreMultiple", { count: uploadedUrls.length, maxFiles })
+                  : t("chooseMultiple")}
             </p>
             <p className="photo-dropzone-hint">{resolvedHint}</p>
           </div>
@@ -354,7 +353,7 @@ export function PhotoDropzone({
                 <div className="photo-preview-img-container">
                   <Image
                     src={item.previewUrl}
-                    alt={`Fotografia ${idx + 1}`}
+                    alt={t("photoAlt", { index: idx + 1 })}
                     width={480}
                     height={320}
                     unoptimized
@@ -363,13 +362,13 @@ export function PhotoDropzone({
                   {item.uploading && (
                     <div className="photo-preview-overlay">
                       <span className="upload-spinner" />
-                      <p>Po ruhet…</p>
+                      <p>{t("saving")}</p>
                     </div>
                   )}
                 </div>
                 <div className="photo-preview-actions">
                   <span className="photo-status-badge">
-                    {item.uploadedUrl ? `✓ Foto ${idx + 1}` : "Duke u ngarkuar…"}
+                    {item.uploadedUrl ? t("photoBadge", { index: idx + 1 }) : t("uploading")}
                   </span>
                   <button
                     type="button"
@@ -377,7 +376,7 @@ export function PhotoDropzone({
                     className="photo-remove-btn"
                     disabled={item.uploading}
                   >
-                    Hiq
+                    {t("removeShort")}
                   </button>
                 </div>
               </div>
@@ -397,7 +396,7 @@ export function PhotoDropzone({
   return (
     <div className="photo-dropzone-wrapper">
       <label id={labelId} htmlFor={inputId} className="photo-dropzone-label">
-        {label}
+        {resolvedLabel}
       </label>
 
       <input type="hidden" name={name} value={imageUrl} />
@@ -407,7 +406,7 @@ export function PhotoDropzone({
           <div className="photo-preview-img-container">
             <Image
               src={previewUrl}
-              alt="Paraqitja e fotografisë"
+              alt={t("previewAlt")}
               width={640}
               height={360}
               unoptimized
@@ -416,13 +415,13 @@ export function PhotoDropzone({
             {isUploading && (
               <div className="photo-preview-overlay">
                 <span className="upload-spinner" />
-                <p>Po konvertohet në WebP dhe po ruhet…</p>
+                <p>{t("convertingAndSaving")}</p>
               </div>
             )}
           </div>
           <div className="photo-preview-actions">
             <span className="photo-status-badge">
-              {imageUrl ? "✓ Ruajtur në WebP" : isUploading ? "Duke u përpunuar…" : "E papërfunduar"}
+              {imageUrl ? t("savedWebp") : isUploading ? t("processing") : t("incomplete")}
             </span>
             <button
               type="button"
@@ -430,7 +429,7 @@ export function PhotoDropzone({
               className="photo-remove-btn"
               disabled={isUploading}
             >
-              Largoni fotografinë
+              {t("removeSingle")}
             </button>
           </div>
         </div>
@@ -476,9 +475,7 @@ export function PhotoDropzone({
               <circle cx="8.5" cy="8.5" r="1.5" />
               <polyline points="21 15 16 10 5 21" />
             </svg>
-            <p className="photo-dropzone-title">
-              {isDragging ? "Lëshoni fotografinë këtu…" : "Zgjidhni ose tërhiqni një fotografi"}
-            </p>
+            <p className="photo-dropzone-title">{isDragging ? t("dropSingle") : t("chooseSingle")}</p>
             <p className="photo-dropzone-hint">{resolvedHint}</p>
           </div>
         </div>

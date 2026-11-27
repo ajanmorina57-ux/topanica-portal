@@ -1,10 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Article } from "@/lib/models";
+import type { Article, ArticleTranslationsMap, TranslationLocale } from "@/lib/models";
 import type { ImportedArticle } from "@/components/AdminImporter";
 import { CATEGORY_LABELS, CATEGORIES } from "@/lib/site";
 import { PhotoDropzone } from "@/components/PhotoDropzone";
+import { showAdminToast } from "@/components/AdminToast";
+
+type EditableArticle = Article & {
+  translations?: ArticleTranslationsMap;
+};
+
+type TranslationDraft = {
+  title: string;
+  summary: string;
+  body: string;
+};
 
 type Draft = {
   id?: number;
@@ -18,13 +29,23 @@ type Draft = {
   source_type: Article["source_type"];
   status: Article["status"];
   published_at: string;
+  translations: Record<TranslationLocale, TranslationDraft>;
 };
 
-function fromArticle(article?: Article): Draft {
+const EMPTY_TRANSLATION: TranslationDraft = { title: "", summary: "", body: "" };
+
+const TRANSLATION_META: Record<TranslationLocale, { label: string; badge: string }> = {
+  en: { label: "Përkthimi në anglisht (EN)", badge: "EN" },
+  de: { label: "Përkthimi në gjermanisht (DE)", badge: "DE" },
+};
+
+function fromArticle(article?: EditableArticle): Draft {
   const initialDate = article?.published_at || article?.created_at;
   const dateFormatted = initialDate
     ? new Date(initialDate).toISOString().slice(0, 10)
     : new Date().toISOString().slice(0, 10);
+  const en = article?.translations?.en;
+  const de = article?.translations?.de;
   return {
     id: article?.id,
     title: article?.title || "",
@@ -37,16 +58,27 @@ function fromArticle(article?: Article): Draft {
     source_type: article?.source_type || "manual",
     status: article?.status || "draft",
     published_at: dateFormatted,
+    translations: {
+      en: en ? { title: en.title, summary: en.summary, body: en.body } : { ...EMPTY_TRANSLATION },
+      de: de ? { title: de.title, summary: de.summary, body: de.body } : { ...EMPTY_TRANSLATION },
+    },
   };
 }
 
-export function ArticleEditor({ article }: { article?: Article }) {
+export function ArticleEditor({ article }: { article?: EditableArticle }) {
   const [draft, setDraft] = useState(() => fromArticle(article));
   const [imported, setImported] = useState(false);
+  const [validationError, setValidationError] = useState("");
+  const [openLocales, setOpenLocales] = useState<Record<TranslationLocale, boolean>>({
+    en: false,
+    de: false,
+  });
 
   useEffect(() => {
     setDraft(fromArticle(article));
     setImported(false);
+    setValidationError("");
+    setOpenLocales({ en: false, de: false });
   }, [article]);
 
   useEffect(() => {
@@ -58,8 +90,13 @@ export function ArticleEditor({ article }: { article?: Article }) {
         id: undefined,
         cover_url: next.cover_url || "",
         status: "draft",
+        translations: {
+          en: { ...EMPTY_TRANSLATION },
+          de: { ...EMPTY_TRANSLATION },
+        },
       }));
       setImported(true);
+      setValidationError("");
       const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       document
         .getElementById("article-form")
@@ -71,6 +108,64 @@ export function ArticleEditor({ article }: { article?: Article }) {
 
   const update = <K extends keyof Draft>(field: K, value: Draft[K]) =>
     setDraft((current) => ({ ...current, [field]: value }));
+
+  const updateTranslation = (
+    locale: TranslationLocale,
+    field: keyof TranslationDraft,
+    value: string,
+  ) => {
+    setValidationError("");
+    setDraft((current) => ({
+      ...current,
+      translations: {
+        ...current.translations,
+        [locale]: {
+          ...current.translations[locale],
+          [field]: value,
+        },
+      },
+    }));
+  };
+
+  const clearTranslation = (locale: TranslationLocale) => {
+    setValidationError("");
+    setDraft((current) => ({
+      ...current,
+      translations: {
+        ...current.translations,
+        [locale]: { ...EMPTY_TRANSLATION },
+      },
+    }));
+  };
+
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    for (const locale of ["en", "de"] as const) {
+      const tr = draft.translations[locale];
+      const title = tr.title.trim();
+      const summary = tr.summary.trim();
+      const body = tr.body.trim();
+      if (!title && !summary && !body) continue;
+
+      const label = TRANSLATION_META[locale].badge;
+      let message = "";
+      if (title.length < 3) {
+        message = `Përkthimi ${label}: Titulli duhet të ketë të paktën 3 karaktere.`;
+      } else if (summary.length < 5) {
+        message = `Përkthimi ${label}: Përmbledhja duhet të ketë të paktën 5 karaktere.`;
+      } else if (body.length < 10) {
+        message = `Përkthimi ${label}: Teksti duhet të ketë të paktën 10 karaktere.`;
+      }
+
+      if (message) {
+        event.preventDefault();
+        setOpenLocales((current) => ({ ...current, [locale]: true }));
+        setValidationError(message);
+        showAdminToast(message, "error");
+        return;
+      }
+    }
+    setValidationError("");
+  };
 
   return (
     <section className="admin-form-block article-editor" id="article-form" aria-labelledby="article-editor-title">
@@ -90,12 +185,12 @@ export function ArticleEditor({ article }: { article?: Article }) {
         )}
         {imported && <span className="editor-source">U përgatit me AI · draft</span>}
       </div>
-      <form action="/api/admin/manage" method="post" className="admin-form">
+      <form action="/api/admin/manage" method="post" className="admin-form" onSubmit={handleSubmit}>
         <input type="hidden" name="action" value="article-save" />
         {draft.id && <input type="hidden" name="id" value={draft.id} />}
         <input type="hidden" name="source_type" value={draft.source_type} />
         <label className="wide-field">
-          Titulli
+          Titulli (Shqip)
           <input
             required
             name="title"
@@ -140,7 +235,7 @@ export function ArticleEditor({ article }: { article?: Article }) {
           />
         </label>
         <label className="wide-field">
-          Përmbledhja
+          Përmbledhja (Shqip)
           <textarea
             required
             name="summary"
@@ -151,7 +246,7 @@ export function ArticleEditor({ article }: { article?: Article }) {
           />
         </label>
         <label className="wide-field">
-          Teksti (ndarje paragrafësh me rresht bosh)
+          Teksti (Shqip — ndarje paragrafësh me rresht bosh)
           <textarea
             required
             name="body"
@@ -196,6 +291,83 @@ export function ArticleEditor({ article }: { article?: Article }) {
             onChange={(event) => update("source_url", event.target.value)}
           />
         </label>
+
+        <div className="wide-field translation-group">
+          {(["en", "de"] as const).map((locale) => {
+            const tr = draft.translations[locale];
+            const hasContent = Boolean(tr.title.trim() && tr.summary.trim() && tr.body.trim());
+            const hasAny = Boolean(tr.title.trim() || tr.summary.trim() || tr.body.trim());
+            const meta = TRANSLATION_META[locale];
+            return (
+              <details
+                key={locale}
+                className="translation-details"
+                open={openLocales[locale]}
+                onToggle={(event) => {
+                  const isOpen = event.currentTarget.open;
+                  setOpenLocales((current) => ({ ...current, [locale]: isOpen }));
+                }}
+              >
+                <summary>
+                  <span>{meta.label}</span>
+                  <span className={`translation-badge ${hasContent ? "ok" : "missing"}`}>
+                    {hasContent ? `${meta.badge} ✓` : `Mungon ${meta.badge}`}
+                  </span>
+                </summary>
+                <div className="translation-fields">
+                  <label className="wide-field">
+                    Titulli ({meta.badge})
+                    <input
+                      name={`title_${locale}`}
+                      maxLength={240}
+                      value={tr.title}
+                      onChange={(event) => updateTranslation(locale, "title", event.target.value)}
+                      placeholder={`Titulli në ${meta.badge} (lëreni bosh për të fshirë/mos ruajtur)`}
+                    />
+                  </label>
+                  <label className="wide-field">
+                    Përmbledhja ({meta.badge})
+                    <textarea
+                      name={`summary_${locale}`}
+                      maxLength={1200}
+                      rows={3}
+                      value={tr.summary}
+                      onChange={(event) => updateTranslation(locale, "summary", event.target.value)}
+                    />
+                  </label>
+                  <label className="wide-field">
+                    Teksti ({meta.badge})
+                    <textarea
+                      name={`body_${locale}`}
+                      maxLength={25000}
+                      rows={6}
+                      value={tr.body}
+                      onChange={(event) => updateTranslation(locale, "body", event.target.value)}
+                    />
+                  </label>
+                  {hasAny && (
+                    <div className="translation-clear-row">
+                      <button
+                        type="button"
+                        className="photo-remove-btn"
+                        onClick={() => clearTranslation(locale)}
+                      >
+                        Pastro fushat {meta.badge}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </details>
+            );
+          })}
+        </div>
+
+        {validationError && (
+          <p className="admin-error wide-field" role="alert">
+            {validationError}
+          </p>
+        )}
+
         <div className="editor-actions">
           <button className="button button-dark" type="submit">
             {draft.id

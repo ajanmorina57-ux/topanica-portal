@@ -1,21 +1,33 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import Image from "next/image";
-import { safeQuery } from "@/lib/db";
-import type { HistoryEntry } from "@/lib/models";
+import { hasLocale, NextIntlClientProvider } from "next-intl";
+import { getMessages, getTranslations, setRequestLocale } from "next-intl/server";
+import { notFound } from "next/navigation";
+import { Link } from "@/i18n/navigation";
+import { pickMessages } from "@/i18n/messages";
+import { routing } from "@/i18n/routing";
+import { getLocalizedHistoryEntries } from "@/lib/db/content";
 import { HistoryPhotoFigure } from "@/components/HistoryPhotoFigure";
+import { buildPageMetadata } from "@/lib/seo";
 
-const title = "Historia dhe trashëgimia";
-const description =
-  "Kronologjia historike, mëhallët, Lisi i Kungullarit dhe burimet e dokumentuara për fshatin Topanicë.";
-
-export const metadata: Metadata = {
-  title,
-  description,
-  alternates: { canonical: "/historia" },
-  openGraph: { title: `${title} — Topanicë`, description, url: "/historia" },
-};
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  if (!hasLocale(routing.locales, locale)) return {};
+
+  const t = await getTranslations({ locale, namespace: "History" });
+  return buildPageMetadata({
+    locale,
+    route: "/historia",
+    title: t("metaTitle"),
+    description: t("metaDescription"),
+  });
+}
 
 function renderFormatted(text: string) {
   const parts = text.split(/(\*\*.*?\*\*|\*.*?\*)/g);
@@ -117,30 +129,58 @@ function renderTimelineContent(content: string) {
   );
 }
 
-export default async function HistoryPage() {
-  const entries = await safeQuery<HistoryEntry>("SELECT * FROM history_entries ORDER BY sort_order ASC, id ASC");
+export default async function HistoryPage({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
+  if (!hasLocale(routing.locales, locale)) notFound();
+
+  setRequestLocale(locale);
+
+  const [t, allMessages, entries] = await Promise.all([
+    getTranslations({ locale, namespace: "History" }),
+    getMessages({ locale }),
+    getLocalizedHistoryEntries(locale),
+  ]);
 
   return (
     <div className="page-shell wrap history-page">
       <div className="page-intro">
-        <p className="section-kicker">Gjurmë, kujtime, burime</p>
-        <h1>Historia e Topanicës</h1>
-        <p>Një rrëfim që ndërtohet mbi të dhëna të dokumentuara dhe kujtesën e banorëve.</p>
+        <p className="section-kicker">{t("pageKicker")}</p>
+        <h1>{t("pageHeading")}</h1>
+        <p>{t("pageDescription")}</p>
       </div>
 
       <section className="timeline-section">
-        <h2>Kronologjia</h2>
+        <h2>{t("timelineHeading")}</h2>
         {entries.length ? (
-          <ol className="timeline">
+          <NextIntlClientProvider
+            locale={locale}
+            messages={pickMessages(allMessages, {
+              History: ["zoomAria", "viewFullSize", "closeLightboxAria"],
+            })}
+          >
+            <ol className="timeline">
             {entries.map((entry) => (
               <li key={entry.id}>
-                <time>{entry.era_year}</time>
-                <div className={`timeline-entry-main ${entry.image_url ? "has-plate" : ""}`}>
+                <time lang={entry.translation_missing ? "sq" : undefined}>{entry.era_year}</time>
+                <div
+                  className={`timeline-entry-main ${entry.image_url ? "has-plate" : ""}`}
+                  lang={entry.translation_missing ? "sq" : undefined}
+                >
+                  {entry.translation_missing && (
+                    <p className="timeline-translation-note" lang={locale}>
+                      <span className="translation-missing-pill">{t("originalLanguageBadge")}</span>{" "}
+                      <span>{t("translationUnavailableNotice")}</span>
+                    </p>
+                  )}
                   <h3>{entry.title}</h3>
                   <div className={`timeline-entry-grid ${entry.image_url ? "with-media" : ""}`}>
                     <div className="timeline-entry-text">
                       {renderTimelineContent(entry.content)}
-                      {entry.source_citation && <p className="citation">Burimi: {entry.source_citation}</p>}
+                      {entry.source_citation && (
+                        <p className="citation">
+                          {t("sourcePrefix")} {entry.source_citation}
+                        </p>
+                      )}
                     </div>
                     {entry.image_url && (
                       <div className="timeline-entry-media">
@@ -151,35 +191,33 @@ export default async function HistoryPage() {
                 </div>
               </li>
             ))}
-          </ol>
+            </ol>
+          </NextIntlClientProvider>
         ) : (
-          <p className="empty-note">Shënimet historike do të shtohen pasi të dokumentohen me burime.</p>
+          <p className="empty-note">{t("timelineEmpty")}</p>
         )}
       </section>
 
       <section className="quarters-section">
         <div>
-          <p className="section-kicker">Kujtesa e lagjeve</p>
-          <h2>Mëhallët</h2>
+          <p className="section-kicker">{t("quartersKicker")}</p>
+          <h2>{t("quartersHeading")}</h2>
         </div>
         <div>
-          <h3>Lagjja e Epërme</h3>
-          <p>
-            Në një intervistë të Shoqatës Topanica përmendet “Lagjja e Epërme”, e lidhur me familje të ardhura nga
-            Malësia e Kamenicës. Emrat dhe kufijtë e mëhallëve të tjera do të shtohen kur të dokumentohen me banorët.
-          </p>
-          <p>Na shkruani emrin e mëhallës, një kujtim që e lidhni me të dhe kush mund ta plotësojë rrëfimin.</p>
+          <h3>{t("quartersUpperTitle")}</h3>
+          <p>{t("quartersUpperP1")}</p>
+          <p>{t("quartersUpperP2")}</p>
           <a
             className="citation-link"
             href="https://sam24.info/shoqata-topanica-model-i-unitetit-dhe-perkushtimit-per-vendlindjen/"
             target="_blank"
             rel="noreferrer"
           >
-            Burimi: SAM24.info, Intervistë e Shoqatës Topanica, 30 maj 2025 ↗
+            {t("quartersCitation")} ↗
           </a>
           <br />
           <Link className="text-link" href="/kontribuo">
-            Ndani një rrëfim për mëhallën tuaj ↗
+            {t("quartersContributeLink")} ↗
           </Link>
         </div>
       </section>
@@ -188,26 +226,22 @@ export default async function HistoryPage() {
         <Image
           className="oak-story-image"
           src="/logo.png"
-          alt="Emblema e Lisit të Kungullarit në logon e Shoqatës Topanica"
+          alt={t("oakImageAlt")}
           width={396}
           height={331}
           sizes="(max-width: 540px) 240px, 280px"
         />
         <div>
-          <p className="section-kicker">Simbol i vendlindjes</p>
-          <h2>Lisi i Kungullarit</h2>
-          <p>
-            Lisi i vetmuar që shfaqet në logon e Shoqatës Topanica njihet si “Lisi i Kungullarit”. Në intervistën e
-            vitit 2025, kryetari i shoqatës e përshkruan si lis mbi 100-vjeçar, pa pemë të tjera pranë. Mosha
-            përcillet si rrëfim i komunitetit, jo si matje shkencore.
-          </p>
+          <p className="section-kicker">{t("oakKicker")}</p>
+          <h2>{t("oakHeading")}</h2>
+          <p>{t("oakBody")}</p>
           <a
             className="citation-link"
             href="https://sam24.info/shoqata-topanica-model-i-unitetit-dhe-perkushtimit-per-vendlindjen/"
             target="_blank"
             rel="noreferrer"
           >
-            Burimi: SAM24.info, 30 maj 2025 ↗
+            {t("oakCitation")} ↗
           </a>
         </div>
       </section>
@@ -215,43 +249,34 @@ export default async function HistoryPage() {
       <section className="institutions-section">
         <div className="section-heading">
           <div>
-            <p className="section-kicker">Jeta e fshatit</p>
-            <h2>Vendet që na lidhin</h2>
+            <p className="section-kicker">{t("institutionsKicker")}</p>
+            <h2>{t("institutionsHeading")}</h2>
           </div>
-          <p>Emrat dhe historitë këtu mund të plotësohen nga banorët.</p>
+          <p>{t("institutionsNote")}</p>
         </div>
         <div className="institutions-grid">
           <article>
-            <h3>Shkolla e fshatit</h3>
-            <p>
-              Shkolla fillore dhe e mesme e ulët mban emrin SHFMU “Rexhep Mala”. Në listën arkivore të qendrave të
-              votimit të KQZ-së më 2014, shkolla në Topanicë figuron me emrin “Rexhep Malaj”.
-            </p>
+            <h3>{t("schoolTitle")}</h3>
+            <p>{t("schoolBody")}</p>
             <a href="https://kqz-ks.org/wp-content/uploads/2018/04/Qendrat-e-Votimit-2014.pdf" target="_blank" rel="noreferrer">
-              Burimi: KQZ, 2014 ↗
+              {t("schoolCitation")} ↗
             </a>
           </article>
           <article>
-            <h3>Xhamia e fshatit</h3>
-            <p>
-              Një vend i rëndësishëm i jetës dhe kujtesës së komunitetit. Rrëfimet për ndërtimin dhe historinë e saj
-              presin të dokumentohen.
-            </p>
-            <Link href="/kontribuo">Shtoni një kujtim ↗</Link>
+            <h3>{t("mosqueTitle")}</h3>
+            <p>{t("mosqueBody")}</p>
+            <Link href="/kontribuo">{t("mosqueLink")} ↗</Link>
           </article>
           <article>
-            <h3>Topanica dhe mërgata</h3>
-            <p>
-              Lidhjet familjare me mërgatën janë pjesë e përditshmërisë së fshatit. Ndani kujtime, fotografi dhe nisma
-              që lidhin brezat e vendet.
-            </p>
-            <Link href="/kontribuo">Ndani me ne ↗</Link>
+            <h3>{t("diasporaTitle")}</h3>
+            <p>{t("diasporaBody")}</p>
+            <Link href="/kontribuo">{t("diasporaLink")} ↗</Link>
           </article>
         </div>
       </section>
 
       <section className="history-sources">
-        <h2>Burime të verifikueshme</h2>
+        <h2>{t("sourcesHeading")}</h2>
         <ul>
           <li>
             <a
@@ -259,17 +284,17 @@ export default async function HistoryPage() {
               target="_blank"
               rel="noreferrer"
             >
-              Agjencia e Statistikave të Kosovës · Popullsia sipas vendbanimit, 2011 dhe 2024 ↗
+              {t("sourceAsk")} ↗
             </a>
           </li>
           <li>
             <a href="https://dtk.rks-gov.net/Objekti?heritageId=3904" target="_blank" rel="noreferrer">
-              Databaza e Trashëgimisë Kulturore · Kalaja e antikitetit të vonë në Topanicë ↗
+              {t("sourceDtk")} ↗
             </a>
           </li>
           <li>
             <a href="https://www.mkrs-ks.org/repository/docs/5367_02.pdf" target="_blank" rel="noreferrer">
-              MKRS · Lista e trashëgimisë kulturore për mbrojtje të përhershme · nr. unik 1197 ↗
+              {t("sourceMkrs")} ↗
             </a>
           </li>
           <li>
@@ -278,7 +303,7 @@ export default async function HistoryPage() {
               target="_blank"
               rel="noreferrer"
             >
-              SAM24.info, Intervistë e Shoqatës Topanica, 30 maj 2025 ↗
+              {t("sourceSam")} ↗
             </a>
           </li>
         </ul>

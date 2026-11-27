@@ -2,11 +2,18 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { requireAdmin } from "@/lib/auth";
 import { query } from "@/lib/db";
+import { TRANSLATION_LOCALES, type TranslationLocale } from "@/lib/models";
 import { slugify } from "@/lib/site";
 import { z } from "zod";
 
 const imageOrUrl = z.string().trim().max(2000).refine((val) => /^(https?:\/\/|\/)/i.test(val), "Duhet të jetë URL ose shteg lokal");
 const httpUrl = z.string().url().max(2000).refine((value) => /^https?:\/\//i.test(value));
+
+const LOCALE_NAMES: Record<TranslationLocale, string> = {
+  en: "EN",
+  de: "DE",
+};
+
 const articleSchema = z.object({
   id: z.coerce.number().int().positive().optional(),
   title: z.string().trim().min(3).max(240),
@@ -42,7 +49,183 @@ const submissionStatusSchema = z.object({ id: z.coerce.number().int().positive()
 const submissionConvertSchema = z.object({ id: z.coerce.number().int().positive() });
 const articleStatusSchema = z.object({ id: z.coerce.number().int().positive(), status: z.enum(["published", "draft"]) });
 const deleteSchema = z.object({ id: z.coerce.number().int().positive(), entity: z.enum(["article", "history", "photo"]) });
-const formObject = (form: FormData) => Object.fromEntries([...form.entries()].filter(([, value]) => typeof value === "string"));
+const formObject = (form: FormData): Record<string, string> =>
+  Object.fromEntries(
+    [...form.entries()].filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+  );
+
+const strField = (values: Record<string, string>, key: string) => (values[key] ?? "").trim();
+
+type ParsedArticleTranslation = { title: string; summary: string; body: string };
+type ParsedHistoryTranslation = { era_year: string; title: string; content: string; source_citation: string | null };
+type ParsedPhotoTranslation = { title: string; credit: string | null };
+
+function parseArticleTranslations(
+  values: Record<string, string>,
+): Record<TranslationLocale, ParsedArticleTranslation | null> {
+  const result = {} as Record<TranslationLocale, ParsedArticleTranslation | null>;
+  for (const locale of TRANSLATION_LOCALES) {
+    const label = LOCALE_NAMES[locale];
+    const title = strField(values, `title_${locale}`);
+    const summary = strField(values, `summary_${locale}`);
+    const body = strField(values, `body_${locale}`);
+    if (!title && !summary && !body) {
+      result[locale] = null;
+      continue;
+    }
+    const parsed = z
+      .object({
+        title: z.string().min(3, `Përkthimi ${label}: Titulli duhet të ketë të paktën 3 karaktere.`).max(240, `Përkthimi ${label}: Titulli është shumë i gjatë.`),
+        summary: z.string().min(5, `Përkthimi ${label}: Përmbledhja duhet të ketë të paktën 5 karaktere.`).max(1200, `Përkthimi ${label}: Përmbledhja është shumë e gjatë.`),
+        body: z.string().min(10, `Përkthimi ${label}: Teksti duhet të ketë të paktën 10 karaktere.`).max(25000, `Përkthimi ${label}: Teksti është shumë i gjatë.`),
+      })
+      .safeParse({ title, summary, body });
+    if (!parsed.success) {
+      throw new Error(parsed.error.issues[0]?.message || `Përkthimi ${label}: Kontrolloni fushat e artikullit.`);
+    }
+    result[locale] = parsed.data;
+  }
+  return result;
+}
+
+function parseHistoryTranslations(
+  values: Record<string, string>,
+): Record<TranslationLocale, ParsedHistoryTranslation | null> {
+  const result = {} as Record<TranslationLocale, ParsedHistoryTranslation | null>;
+  for (const locale of TRANSLATION_LOCALES) {
+    const label = LOCALE_NAMES[locale];
+    const era_year = strField(values, `era_year_${locale}`);
+    const title = strField(values, `title_${locale}`);
+    const content = strField(values, `content_${locale}`);
+    const source_citation = strField(values, `source_citation_${locale}`);
+    if (!era_year && !title && !content && !source_citation) {
+      result[locale] = null;
+      continue;
+    }
+    const parsed = z
+      .object({
+        era_year: z.string().min(1, `Përkthimi ${label}: Plotësoni periudhën/vitin.`).max(80, `Përkthimi ${label}: Periudha është shumë e gjatë.`),
+        title: z.string().min(3, `Përkthimi ${label}: Titulli duhet të ketë të paktën 3 karaktere.`).max(240, `Përkthimi ${label}: Titulli është shumë i gjatë.`),
+        content: z.string().min(20, `Përkthimi ${label}: Përmbajtja duhet të ketë të paktën 20 karaktere.`).max(6000, `Përkthimi ${label}: Përmbajtja është shumë e gjatë.`),
+        source_citation: z.string().max(1200, `Përkthimi ${label}: Burimi është shumë i gjatë.`),
+      })
+      .safeParse({ era_year, title, content, source_citation });
+    if (!parsed.success) {
+      throw new Error(parsed.error.issues[0]?.message || `Përkthimi ${label}: Kontrolloni fushat historike.`);
+    }
+    result[locale] = {
+      era_year: parsed.data.era_year,
+      title: parsed.data.title,
+      content: parsed.data.content,
+      source_citation: parsed.data.source_citation || null,
+    };
+  }
+  return result;
+}
+
+function parsePhotoTranslations(
+  values: Record<string, string>,
+): Record<TranslationLocale, ParsedPhotoTranslation | null> {
+  const result = {} as Record<TranslationLocale, ParsedPhotoTranslation | null>;
+  for (const locale of TRANSLATION_LOCALES) {
+    const label = LOCALE_NAMES[locale];
+    const title = strField(values, `title_${locale}`);
+    const credit = strField(values, `credit_${locale}`);
+    if (!title && !credit) {
+      result[locale] = null;
+      continue;
+    }
+    const parsed = z
+      .object({
+        title: z.string().min(2, `Përkthimi ${label}: Titulli i fotos duhet të ketë të paktën 2 karaktere.`).max(240, `Përkthimi ${label}: Titulli është shumë i gjatë.`),
+        credit: z.string().max(500, `Përkthimi ${label}: Autori/burimi është shumë i gjatë.`),
+      })
+      .safeParse({ title, credit });
+    if (!parsed.success) {
+      throw new Error(parsed.error.issues[0]?.message || `Përkthimi ${label}: Kontrolloni fushat e fotos.`);
+    }
+    result[locale] = {
+      title: parsed.data.title,
+      credit: parsed.data.credit || null,
+    };
+  }
+  return result;
+}
+
+async function syncArticleTranslations(
+  articleId: number,
+  translations: Record<TranslationLocale, ParsedArticleTranslation | null>,
+) {
+  for (const locale of TRANSLATION_LOCALES) {
+    const entry = translations[locale];
+    if (!entry) {
+      await query("DELETE FROM article_translations WHERE article_id=$1 AND locale=$2", [articleId, locale]);
+      continue;
+    }
+    await query(
+      `INSERT INTO article_translations (article_id, locale, title, summary, body, updated_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       ON CONFLICT (article_id, locale) DO UPDATE SET
+         title = EXCLUDED.title,
+         summary = EXCLUDED.summary,
+         body = EXCLUDED.body,
+         updated_at = NOW()`,
+      [articleId, locale, entry.title, entry.summary, entry.body],
+    );
+  }
+}
+
+async function syncHistoryTranslations(
+  historyEntryId: number,
+  translations: Record<TranslationLocale, ParsedHistoryTranslation | null>,
+) {
+  for (const locale of TRANSLATION_LOCALES) {
+    const entry = translations[locale];
+    if (!entry) {
+      await query("DELETE FROM history_entry_translations WHERE history_entry_id=$1 AND locale=$2", [
+        historyEntryId,
+        locale,
+      ]);
+      continue;
+    }
+    await query(
+      `INSERT INTO history_entry_translations (history_entry_id, locale, era_year, title, content, source_citation, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())
+       ON CONFLICT (history_entry_id, locale) DO UPDATE SET
+         era_year = EXCLUDED.era_year,
+         title = EXCLUDED.title,
+         content = EXCLUDED.content,
+         source_citation = EXCLUDED.source_citation,
+         updated_at = NOW()`,
+      [historyEntryId, locale, entry.era_year, entry.title, entry.content, entry.source_citation],
+    );
+  }
+}
+
+async function syncPhotoTranslations(
+  galleryPhotoId: number,
+  translations: Record<TranslationLocale, ParsedPhotoTranslation | null>,
+) {
+  for (const locale of TRANSLATION_LOCALES) {
+    const entry = translations[locale];
+    if (!entry) {
+      await query("DELETE FROM gallery_photo_translations WHERE gallery_photo_id=$1 AND locale=$2", [
+        galleryPhotoId,
+        locale,
+      ]);
+      continue;
+    }
+    await query(
+      `INSERT INTO gallery_photo_translations (gallery_photo_id, locale, title, credit, updated_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (gallery_photo_id, locale) DO UPDATE SET
+         title = EXCLUDED.title,
+         credit = EXCLUDED.credit,
+         updated_at = NOW()`,
+      [galleryPhotoId, locale, entry.title, entry.credit],
+    );
+  }
+}
 
 export async function POST(request: Request) {
   try { await requireAdmin(); } catch { return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); }
@@ -60,6 +243,7 @@ export async function POST(request: Request) {
   try {
     if (action === "article-save") {
       const data = articleSchema.parse(values);
+      const translations = parseArticleTranslations(values);
       const status = data.status || "draft";
       const finalImage = data.image_url || data.cover_url || null;
       let rawDate: string | null = null;
@@ -67,18 +251,21 @@ export async function POST(request: Request) {
         const parsedDate = new Date(data.published_at.trim());
         if (!Number.isNaN(parsedDate.getTime())) rawDate = parsedDate.toISOString();
       }
-      if (data.id) {
+      let articleId = data.id;
+      if (articleId) {
         await query(
           "UPDATE articles SET title=$1,summary=$2,body=$3,category=$4,cover_url=$5,image_url=$5,source_name=$6,source_url=$7,source_type=$8,status=$9,published_at=COALESCE($10::timestamptz, CASE WHEN $9='published' THEN COALESCE(published_at, NOW()) ELSE published_at END) WHERE id=$11",
-          [data.title, data.summary, data.body, data.category, finalImage, data.source_name || null, data.source_url || null, data.source_type, status, rawDate, data.id],
+          [data.title, data.summary, data.body, data.category, finalImage, data.source_name || null, data.source_url || null, data.source_type, status, rawDate, articleId],
         );
       } else {
         const slug = `${slugify(data.title) || "lajm-topanica"}-${randomUUID()}`;
-        await query(
-          "INSERT INTO articles (slug,title,summary,body,category,cover_url,image_url,source_name,source_url,source_type,is_auto_scraped,status,published_at) VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9,FALSE,$10,COALESCE($11::timestamptz, CASE WHEN $10='published' THEN NOW() ELSE NULL END))",
+        const inserted = await query<{ id: number }>(
+          "INSERT INTO articles (slug,title,summary,body,category,cover_url,image_url,source_name,source_url,source_type,is_auto_scraped,status,published_at) VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9,FALSE,$10,COALESCE($11::timestamptz, CASE WHEN $10='published' THEN NOW() ELSE NULL END)) RETURNING id",
           [slug, data.title, data.summary, data.body, data.category, finalImage, data.source_name || null, data.source_url || null, data.source_type, status, rawDate],
         );
+        articleId = inserted[0]?.id;
       }
+      if (articleId) await syncArticleTranslations(articleId, translations);
       notice = status === "published" ? "published" : "saved";
     } else if (action === "article-status") {
       const data = articleStatusSchema.parse(values);
@@ -86,14 +273,40 @@ export async function POST(request: Request) {
       notice = data.status === "published" ? "published" : "saved";
     } else if (action === "history-save") {
       const data = historySchema.parse(values);
+      const translations = parseHistoryTranslations(values);
       const img = data.image_url || null;
-      if (data.id) await query("UPDATE history_entries SET era_year=$1,title=$2,content=$3,source_citation=$4,sort_order=$5,image_url=$6 WHERE id=$7", [data.era_year, data.title, data.content, data.source_citation || null, data.sort_order, img, data.id]);
-      else await query("INSERT INTO history_entries (era_year,title,content,source_citation,sort_order,image_url) VALUES ($1,$2,$3,$4,$5,$6)", [data.era_year, data.title, data.content, data.source_citation || null, data.sort_order, img]);
+      let historyId = data.id;
+      if (historyId) {
+        await query(
+          "UPDATE history_entries SET era_year=$1,title=$2,content=$3,source_citation=$4,sort_order=$5,image_url=$6 WHERE id=$7",
+          [data.era_year, data.title, data.content, data.source_citation || null, data.sort_order, img, historyId],
+        );
+      } else {
+        const inserted = await query<{ id: number }>(
+          "INSERT INTO history_entries (era_year,title,content,source_citation,sort_order,image_url) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id",
+          [data.era_year, data.title, data.content, data.source_citation || null, data.sort_order, img],
+        );
+        historyId = inserted[0]?.id;
+      }
+      if (historyId) await syncHistoryTranslations(historyId, translations);
     } else if (action === "photo-save") {
       const data = photoSchema.parse(values);
+      const translations = parsePhotoTranslations(values);
       const year = data.year_taken === "" ? null : data.year_taken;
-      if (data.id) await query("UPDATE gallery_photos SET title=$1,category=$2,image_url=$3,year_taken=$4,credit=$5 WHERE id=$6", [data.title, data.category, data.image_url, year, data.credit || null, data.id]);
-      else await query("INSERT INTO gallery_photos (title,category,image_url,year_taken,credit) VALUES ($1,$2,$3,$4,$5)", [data.title, data.category, data.image_url, year, data.credit || null]);
+      let photoId = data.id;
+      if (photoId) {
+        await query(
+          "UPDATE gallery_photos SET title=$1,category=$2,image_url=$3,year_taken=$4,credit=$5 WHERE id=$6",
+          [data.title, data.category, data.image_url, year, data.credit || null, photoId],
+        );
+      } else {
+        const inserted = await query<{ id: number }>(
+          "INSERT INTO gallery_photos (title,category,image_url,year_taken,credit) VALUES ($1,$2,$3,$4,$5) RETURNING id",
+          [data.title, data.category, data.image_url, year, data.credit || null],
+        );
+        photoId = inserted[0]?.id;
+      }
+      if (photoId) await syncPhotoTranslations(photoId, translations);
     } else if (action === "submission-status") {
       const data = submissionStatusSchema.parse(values);
       await query("UPDATE submissions SET status=$1 WHERE id=$2", [data.status, data.id]);

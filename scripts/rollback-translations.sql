@@ -1,0 +1,1 @@
+DROP TABLE IF EXISTS gallery_photo_translations, history_entry_translations, article_translations;

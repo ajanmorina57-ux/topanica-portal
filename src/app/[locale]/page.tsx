@@ -1,33 +1,53 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import Image from "next/image";
-import { safeQuery } from "@/lib/db";
-import type { Article, GalleryPhoto, HistoryEntry } from "@/lib/models";
-import { GALLERY_LABELS } from "@/lib/site";
+import { hasLocale } from "next-intl";
+import { getTranslations, setRequestLocale } from "next-intl/server";
+import { notFound } from "next/navigation";
+import { Link } from "@/i18n/navigation";
+import { routing } from "@/i18n/routing";
+import {
+  getLocalizedArticles,
+  getLocalizedGalleryPhotos,
+  getLocalizedHistoryEntries,
+} from "@/lib/db/content";
 import { ArticleList } from "@/components/ArticleList";
 import { PlaceIllustration } from "@/components/PlaceIllustration";
 import { HeroSequence } from "@/components/Motion";
-
-export const metadata: Metadata = {
-  alternates: { canonical: "/" },
-};
+import { buildPageMetadata } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
-export default async function HomePage() {
-  const [news, municipalNews, history, galleryPhotos] = await Promise.all([
-    safeQuery<Article>(
-      "SELECT * FROM articles WHERE status='published' AND category='topanice' ORDER BY published_at DESC NULLS LAST, created_at DESC LIMIT 4",
-    ),
-    safeQuery<Article>(
-      "SELECT * FROM articles WHERE status='published' AND category='komuna' ORDER BY published_at DESC NULLS LAST, created_at DESC LIMIT 3",
-    ),
-    safeQuery<HistoryEntry>(
-      "SELECT * FROM history_entries WHERE title='Lisi i Kungullarit' ORDER BY sort_order ASC, id ASC LIMIT 1",
-    ),
-    safeQuery<GalleryPhoto>(
-      "SELECT * FROM gallery_photos ORDER BY CASE category WHEN 'natyre' THEN 0 WHEN 'fshati' THEN 1 ELSE 2 END, year_taken DESC NULLS LAST, created_at DESC LIMIT 6",
-    ),
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  if (!hasLocale(routing.locales, locale)) return {};
+
+  const tMeta = await getTranslations({ locale, namespace: "Metadata" });
+  return buildPageMetadata({
+    locale,
+    route: "/",
+    title: tMeta("siteTitle"),
+    description: tMeta("siteDescription"),
+    isHome: true,
+  });
+}
+
+export default async function HomePage({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
+  if (!hasLocale(routing.locales, locale)) notFound();
+
+  setRequestLocale(locale);
+
+  const [t, tGalleryCat, news, municipalNews, history, galleryPhotos] = await Promise.all([
+    getTranslations({ locale, namespace: "Home" }),
+    getTranslations({ locale, namespace: "GalleryCategories" }),
+    getLocalizedArticles(locale, { status: "published", category: "topanice", limit: 4 }),
+    getLocalizedArticles(locale, { status: "published", category: "komuna", limit: 3 }),
+    getLocalizedHistoryEntries(locale, { title: "Lisi i Kungullarit", limit: 1 }),
+    getLocalizedGalleryPhotos(locale, { homeOrder: true, limit: 6 }),
   ]);
 
   const feature = history[0];
@@ -38,14 +58,12 @@ export default async function HomePage() {
     <>
       <section className="hero wrap">
         <HeroSequence className="hero-copy">
-          <p className="hero-place">Fshati Topanicë · Komuna e Kamenicës · Anamoravë</p>
-          <h1>Një vend. Shumë kujtime.</h1>
-          <p className="hero-deck">
-            Një hapësirë e përbashkët për jetën, historinë dhe njerëzit e Topanicës — kudo që janë.
-          </p>
+          <p className="hero-place">{t("heroPlace")}</p>
+          <h1>{t("heroTitle")}</h1>
+          <p className="hero-deck">{t("heroDeck")}</p>
           <div className="hero-actions">
             <Link className="button button-dark" href="/historia">
-              Njihni fshatin <span aria-hidden="true">↗</span>
+              {t("heroCta")} <span aria-hidden="true">↗</span>
             </Link>
             <a
               className="text-link"
@@ -53,7 +71,7 @@ export default async function HomePage() {
               target="_blank"
               rel="noreferrer"
             >
-              Shikoni në hartë ↗
+              {t("heroMapLink")} ↗
             </a>
           </div>
         </HeroSequence>
@@ -80,10 +98,10 @@ export default async function HomePage() {
             <PlaceIllustration className="hero-plate-band-svg" decorative />
           </div>
           <figcaption className="hero-plate-ledger">
-            <span className="hero-plate-caption">
+            <span className="hero-plate-caption" lang={heroPhoto?.translation_missing ? "sq" : undefined}>
               {heroPhoto
                 ? `${heroPhoto.title}${heroPhoto.year_taken ? ` · ${heroPhoto.year_taken}` : ""}`
-                : "Ilustrim · Anamoravë"}
+                : t("heroFallbackCaption")}
             </span>
             <span className="hero-plate-coord">42°31′46″N&nbsp; 21°37′35″E</span>
           </figcaption>
@@ -93,20 +111,20 @@ export default async function HomePage() {
       <section className="fact-band">
         <div className="wrap fact-grid">
           <div>
-            <strong>1 286</strong>
-            <span>banorë më 2024</span>
+            <strong>{t("factPopulationValue")}</strong>
+            <span>{t("factPopulationLabel")}</span>
           </div>
           <div>
-            <strong>Kamenicë</strong>
-            <span>komuna · Dardanë · Rajoni i Gjilanit</span>
+            <strong>{t("factMunicipalityValue")}</strong>
+            <span>{t("factMunicipalityLabel")}</span>
           </div>
           <div>
-            <strong>Gradec</strong>
-            <span>lokalitet arkeologjik</span>
+            <strong>{t("factArchaeologyValue")}</strong>
+            <span>{t("factArchaeologyLabel")}</span>
           </div>
           <div>
-            <strong>Gjithandej</strong>
-            <span>një lidhje me mërgatën</span>
+            <strong>{t("factDiasporaValue")}</strong>
+            <span>{t("factDiasporaLabel")}</span>
           </div>
         </div>
       </section>
@@ -114,11 +132,11 @@ export default async function HomePage() {
       <section className="section wrap news-section">
         <div className="section-heading">
           <div>
-            <p className="section-kicker">Nga fshati dhe për fshatin</p>
-            <h2>Lajmet nga Topanica</h2>
+            <p className="section-kicker">{t("newsKicker")}</p>
+            <h2>{t("newsHeading")}</h2>
           </div>
           <Link className="text-link" href="/lajme">
-            Të gjitha lajmet <span aria-hidden="true">↗</span>
+            {t("newsAllLink")} <span aria-hidden="true">↗</span>
           </Link>
         </div>
         <ArticleList articles={news} />
@@ -128,19 +146,17 @@ export default async function HomePage() {
         <div className="wrap">
           <div className="section-heading">
             <div>
-              <p className="section-kicker">Njoftime lokale</p>
-              <h2>Nga Komuna e Kamenicës</h2>
+              <p className="section-kicker">{t("municipalKicker")}</p>
+              <h2>{t("municipalHeading")}</h2>
             </div>
             <a className="text-link" href="https://kamenice.rks-gov.net/" target="_blank" rel="noreferrer">
-              Faqja zyrtare e komunës ↗
+              {t("municipalLink")} ↗
             </a>
           </div>
           {municipalNews.length ? (
             <ArticleList articles={municipalNews} />
           ) : (
-            <p className="municipal-note">
-              Për njoftimet më të fundit komunale, vizitoni faqen zyrtare të Komunës së Kamenicës.
-            </p>
+            <p className="municipal-note">{t("municipalEmpty")}</p>
           )}
         </div>
       </section>
@@ -148,24 +164,21 @@ export default async function HomePage() {
       <section className="history-feature">
         <div className="wrap history-feature-inner">
           <div className="history-index">
-            <span>Trashëgimia natyrore</span>
-            <span>Simbol i Shoqatës Topanica</span>
+            <span>{t("historyIndexLeft")}</span>
+            <span>{t("historyIndexRight")}</span>
           </div>
-          <div className="history-feature-copy">
-            <h2>{feature?.title ?? "Lisi i Kungullarit"}</h2>
-            <p>
-              {feature?.content ??
-                "Në një intervistë të Shoqatës Topanica, lisi i vetmuar në logon e saj përshkruhet si mbi 100-vjeçar. Mosha përcillet si rrëfim i komunitetit."}
-            </p>
+          <div className="history-feature-copy" lang={feature?.translation_missing ? "sq" : undefined}>
+            <h2>{feature?.title ?? t("oakFallbackTitle")}</h2>
+            <p>{feature?.content ?? t("oakFallbackBody")}</p>
             <Link className="text-link" href="/historia">
-              Lexoni historinë <span aria-hidden="true">↗</span>
+              {t("oakReadMore")} <span aria-hidden="true">↗</span>
             </Link>
           </div>
           <div className="oak-emblem-card">
             <Image
               className="home-oak-mark"
               src="/logo.png"
-              alt="Emblema e lisit të Shoqatës Topanica"
+              alt={t("oakEmblemAlt")}
               width={396}
               height={331}
               sizes="(max-width: 540px) 180px, 220px"
@@ -179,11 +192,11 @@ export default async function HomePage() {
           <div className="wrap">
             <div className="section-heading">
               <div>
-                <p className="section-kicker">Dritare në Arkiv</p>
-                <h2>Kujtime në fotografi</h2>
+                <p className="section-kicker">{t("galleryKicker")}</p>
+                <h2>{t("galleryHeading")}</h2>
               </div>
               <Link className="text-link" href="/galeria">
-                Shiko galerinë <span aria-hidden="true">↗</span>
+                {t("galleryLink")} <span aria-hidden="true">↗</span>
               </Link>
             </div>
             <div className="home-gallery-grid">
@@ -200,9 +213,11 @@ export default async function HomePage() {
                     />
                   </span>
                   <span className="home-gallery-meta">
-                    <span className="home-gallery-title">{photo.title}</span>
+                    <span className="home-gallery-title" lang={photo.translation_missing ? "sq" : undefined}>
+                      {photo.title}
+                    </span>
                     <span className="home-gallery-sub">
-                      {GALLERY_LABELS[photo.category]}
+                      {tGalleryCat(photo.category)}
                       {photo.year_taken ? ` · ${photo.year_taken}` : ""}
                     </span>
                   </span>
@@ -215,31 +230,25 @@ export default async function HomePage() {
 
       <section className="diaspora-section wrap">
         <div>
-          <p className="section-kicker">Kujtimet bëhen trashëgimi</p>
+          <p className="section-kicker">{t("diasporaKicker")}</p>
           <h2>
-            Një histori juaj
+            {t("diasporaHeadingLine1")}
             <br />
-            është histori e jona.
+            {t("diasporaHeadingLine2")}
           </h2>
         </div>
         <div className="diaspora-copy">
-          <p>
-            Kudo që jetoni — keni një fotografi të vjetër, një rrëfim familjar apo një lajm për fshatin? Ndihmoni që
-            kujtesa e Topanicës të ruhet dhe të ndahet me të gjithë.
-          </p>
+          <p>{t("diasporaBody")}</p>
           <Link className="button button-light" href="/kontribuo">
-            Ndani me ne <span aria-hidden="true">↗</span>
+            {t("diasporaCta")} <span aria-hidden="true">↗</span>
           </Link>
         </div>
       </section>
 
       <section className="sources-note wrap">
-        <p>
-          Të dhënat e popullsisë: ASK, regjistrimet e viteve 2011 dhe 2024. Lokaliteti arkeologjik: Regjistri i
-          Trashëgimisë Kulturore të Kosovës.
-        </p>
+        <p>{t("sourcesNote")}</p>
         <Link href="/historia">
-          Burimet dhe shënimet <span aria-hidden="true">↗</span>
+          {t("sourcesLink")} <span aria-hidden="true">↗</span>
         </Link>
       </section>
     </>

@@ -1,3 +1,5 @@
+import type { Locale } from "@/lib/models";
+
 export const CATEGORIES = ["topanice", "komuna", "zhvillim", "mergata"] as const;
 export const CATEGORY_LABELS: Record<(typeof CATEGORIES)[number], string> = {
   topanice: "Topanicë",
@@ -26,20 +28,50 @@ export const SUBMISSION_TYPE_LABELS: Record<string, string> = {
   lajm: "Lajm",
 };
 
-const ALBANIAN_MONTHS = [
-  "janar",
-  "shkurt",
-  "mars",
-  "prill",
-  "maj",
-  "qershor",
-  "korrik",
-  "gusht",
-  "shtator",
-  "tetor",
-  "nëntor",
-  "dhjetor",
-] as const;
+const MONTHS_BY_LOCALE: Record<Locale, readonly string[]> = {
+  sq: [
+    "janar",
+    "shkurt",
+    "mars",
+    "prill",
+    "maj",
+    "qershor",
+    "korrik",
+    "gusht",
+    "shtator",
+    "tetor",
+    "nëntor",
+    "dhjetor",
+  ],
+  en: [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ],
+  de: [
+    "Januar",
+    "Februar",
+    "März",
+    "April",
+    "Mai",
+    "Juni",
+    "Juli",
+    "August",
+    "September",
+    "Oktober",
+    "November",
+    "Dezember",
+  ],
+};
 
 const NUMERIC_DATE_PARTS = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
@@ -48,8 +80,8 @@ const NUMERIC_DATE_PARTS = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Europe/Belgrade",
 });
 
-/** Formats a date deterministically in Albanian across both SSR and browser ICU locales. */
-export function formatDate(value: string | Date | null) {
+/** Formats a date deterministically in Albanian, English, or German across SSR and browser ICU locales. */
+export function formatDate(value: string | Date | null, locale: Locale = "sq") {
   if (!value) return "";
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "";
@@ -58,10 +90,11 @@ export function formatDate(value: string | Date | null) {
   const day = Number(parts.find((p) => p.type === "day")?.value || "0");
   const month = Number(parts.find((p) => p.type === "month")?.value || "0");
   const year = parts.find((p) => p.type === "year")?.value || "";
-  const monthName = ALBANIAN_MONTHS[month - 1];
+  const months = MONTHS_BY_LOCALE[locale] ?? MONTHS_BY_LOCALE.sq;
+  const monthName = months[month - 1];
   if (!day || !monthName || !year) return "";
 
-  return `${day} ${monthName} ${year}`;
+  return locale === "de" ? `${day}. ${monthName} ${year}` : `${day} ${monthName} ${year}`;
 }
 
 const GENERIC_COVER_PATTERNS = [

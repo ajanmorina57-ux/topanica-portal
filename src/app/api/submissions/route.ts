@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
+import { hasLocale } from "next-intl";
 import { query } from "@/lib/db";
+import { routing } from "@/i18n/routing";
+import type { Locale } from "@/lib/models";
 import { z } from "zod";
 
 const isImagePath = (value: string) => /^(https?:\/\/|\/)/i.test(value);
@@ -25,7 +28,30 @@ const submissionSchema = z.object({
   image_url: imageOrUrl,
   image_urls: z.string().max(30000).optional().default(""),
   website: z.string().max(0).optional().default(""),
+  locale: z.enum(["sq", "en", "de"]).optional().default("sq"),
 });
+
+function resolveSubmissionLocale(rawLocale: FormDataEntryValue | null, referer: string | null): Locale {
+  if (typeof rawLocale === "string" && hasLocale(routing.locales, rawLocale)) {
+    return rawLocale;
+  }
+  if (referer) {
+    try {
+      const seg = new URL(referer).pathname.split("/").filter(Boolean)[0];
+      if (seg && hasLocale(routing.locales, seg)) {
+        return seg;
+      }
+    } catch {
+      // Ignore malformed referer
+    }
+  }
+  return routing.defaultLocale;
+}
+
+function getLocalizedContributeUrl(locale: Locale, queryString: string, requestUrl: string): URL {
+  const path = routing.pathnames["/kontribuo"][locale];
+  return new URL(`/${locale}${path}${queryString}`, requestUrl);
+}
 
 function parseImageUrls(rawJson: string, fallbackSingle: string, attachmentUrl: string): string[] {
   const urls: string[] = [];
@@ -67,15 +93,19 @@ export async function POST(request: Request) {
     }
   }
 
+  const referer = request.headers.get("referer");
   let form: FormData;
   try {
     form = await request.formData();
   } catch {
-    return NextResponse.redirect(new URL("/kontribuo?error=invalid", request.url), 303);
+    const fallbackLocale = resolveSubmissionLocale(null, referer);
+    return NextResponse.redirect(getLocalizedContributeUrl(fallbackLocale, "?error=invalid", request.url), 303);
   }
+
+  const locale = resolveSubmissionLocale(form.get("locale"), referer);
   const parsed = submissionSchema.safeParse(Object.fromEntries(form.entries()));
   if (!parsed.success) {
-    return NextResponse.redirect(new URL("/kontribuo?error=invalid", request.url), 303);
+    return NextResponse.redirect(getLocalizedContributeUrl(locale, "?error=invalid", request.url), 303);
   }
 
   const data = parsed.data;
@@ -97,8 +127,8 @@ export async function POST(request: Request) {
     );
   } catch (err) {
     console.error("Submission insert error:", err);
-    return NextResponse.redirect(new URL("/kontribuo?error=unavailable", request.url), 303);
+    return NextResponse.redirect(getLocalizedContributeUrl(locale, "?error=unavailable", request.url), 303);
   }
 
-  return NextResponse.redirect(new URL("/kontribuo?sent=1", request.url), 303);
+  return NextResponse.redirect(getLocalizedContributeUrl(locale, "?sent=1", request.url), 303);
 }

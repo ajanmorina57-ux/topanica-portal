@@ -2,20 +2,29 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
+import { useTranslations } from "next-intl";
 import type { GalleryPhoto } from "@/lib/models";
-import { GALLERY_CATEGORIES, GALLERY_LABELS } from "@/lib/site";
+import { GALLERY_CATEGORIES } from "@/lib/site";
 
-const filters = [
-  ["all", "Të gjitha"],
-  ...GALLERY_CATEGORIES.map((category) => [category, GALLERY_LABELS[category]] as const),
-] as const;
+type GalleryItem = GalleryPhoto & { translation_missing?: boolean };
 
-export function GalleryArchive({ photos }: { photos: GalleryPhoto[] }) {
+export function GalleryArchive({ photos }: { photos: GalleryItem[] }) {
+  const t = useTranslations("Gallery");
+  const tCat = useTranslations("GalleryCategories");
   const [filter, setFilter] = useState<string>("all");
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const isOpen = selectedIndex !== null;
   const closeRef = useRef<HTMLButtonElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
+
+  const filters = useMemo(
+    () =>
+      [
+        ["all", t("filterAll")],
+        ...GALLERY_CATEGORIES.map((category) => [category, tCat(category)] as const),
+      ] as const,
+    [t, tCat],
+  );
 
   const counts = useMemo(() => {
     const map: Record<string, number> = { all: photos.length };
@@ -68,7 +77,7 @@ export function GalleryArchive({ photos }: { photos: GalleryPhoto[] }) {
 
   return (
     <>
-      <div className="filter-row" aria-label="Filtro galerinë">
+      <div className="filter-row" aria-label={t("filterAria")}>
         {filters.map(([value, label]) => (
           <button
             type="button"
@@ -95,7 +104,7 @@ export function GalleryArchive({ photos }: { photos: GalleryPhoto[] }) {
                 type="button"
                 className="gallery-item"
                 onClick={() => openPhoto(index)}
-                aria-label={`Hap fotografinë: ${photo.title}`}
+                aria-label={t("openPhotoAria", { title: photo.title })}
               >
                 <span className="gallery-image-frame">
                   <Image
@@ -111,9 +120,11 @@ export function GalleryArchive({ photos }: { photos: GalleryPhoto[] }) {
                   />
                 </span>
                 <span className="gallery-card-caption">
-                  <span className="gallery-card-title">{photo.title}</span>
+                  <span className="gallery-card-title" lang={photo.translation_missing ? "sq" : undefined}>
+                    {photo.title}
+                  </span>
                   <span className="gallery-card-meta">
-                    {GALLERY_LABELS[photo.category]}
+                    {tCat(photo.category)}
                     {photo.year_taken ? ` · ${photo.year_taken}` : ""}
                   </span>
                 </span>
@@ -123,13 +134,13 @@ export function GalleryArchive({ photos }: { photos: GalleryPhoto[] }) {
         </div>
       ) : photos.length > 0 ? (
         <div className="gallery-empty">
-          <p>Nuk ka ende fotografi në këtë kategori.</p>
-          <p>Zgjidhni një kategori tjetër ose dërgoni një fotografi të re për këtë seksion.</p>
+          <p>{t("emptyCategoryTitle")}</p>
+          <p>{t("emptyCategoryBody")}</p>
         </div>
       ) : (
         <div className="gallery-empty">
-          <p>Arkivi fotografik po nis me kujtimet tuaja.</p>
-          <p>Fotografi të Topanicës nga familjet, rrugët dhe peizazhi i fshatit do ta pasurojnë këtë galeri.</p>
+          <p>{t("emptyAllTitle")}</p>
+          <p>{t("emptyAllBody")}</p>
         </div>
       )}
 
@@ -148,7 +159,7 @@ export function GalleryArchive({ photos }: { photos: GalleryPhoto[] }) {
             ref={closeRef}
             type="button"
             className="lightbox-close"
-            aria-label="Mbyll pamjen"
+            aria-label={t("closeAria")}
             onClick={() => setSelectedIndex(null)}
           >
             <svg
@@ -171,7 +182,7 @@ export function GalleryArchive({ photos }: { photos: GalleryPhoto[] }) {
             <button
               type="button"
               className="lightbox-nav lightbox-prev"
-              aria-label="Fotografia e mëparshme"
+              aria-label={t("prevAria")}
               onClick={() => setSelectedIndex((index) => (index === null ? null : (index - 1 + visible.length) % visible.length))}
             >
               <svg
@@ -205,7 +216,7 @@ export function GalleryArchive({ photos }: { photos: GalleryPhoto[] }) {
             <button
               type="button"
               className="lightbox-nav lightbox-next"
-              aria-label="Fotografia tjetër"
+              aria-label={t("nextAria")}
               onClick={() => setSelectedIndex((index) => (index === null ? null : (index + 1) % visible.length))}
             >
               <svg
@@ -225,7 +236,7 @@ export function GalleryArchive({ photos }: { photos: GalleryPhoto[] }) {
           )}
 
           <p className="lightbox-caption">
-            <span>
+            <span lang={selected.translation_missing ? "sq" : undefined}>
               {selected.title}
               {selected.year_taken ? ` · ${selected.year_taken}` : ""}
               {selected.credit ? ` · ${selected.credit}` : ""}

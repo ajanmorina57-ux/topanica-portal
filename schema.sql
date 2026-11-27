@@ -84,3 +84,33 @@ CREATE INDEX IF NOT EXISTS articles_published_idx ON articles(status, published_
 CREATE INDEX IF NOT EXISTS articles_category_published_idx ON articles(category, status, published_at DESC);
 CREATE INDEX IF NOT EXISTS submissions_status_idx ON submissions(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS media_assets_created_idx ON media_assets(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS article_translations (
+  article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+  locale TEXT NOT NULL CHECK (locale IN ('en', 'de')),
+  title TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  body TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (article_id, locale)
+);
+
+CREATE TABLE IF NOT EXISTS history_entry_translations (
+  history_entry_id INTEGER NOT NULL REFERENCES history_entries(id) ON DELETE CASCADE,
+  locale TEXT NOT NULL CHECK (locale IN ('en', 'de')),
+  era_year TEXT NOT NULL,
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  source_citation TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (history_entry_id, locale)
+);
+
+CREATE TABLE IF NOT EXISTS gallery_photo_translations (
+  gallery_photo_id INTEGER NOT NULL REFERENCES gallery_photos(id) ON DELETE CASCADE,
+  locale TEXT NOT NULL CHECK (locale IN ('en', 'de')),
+  title TEXT NOT NULL,
+  credit TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (gallery_photo_id, locale)
+);

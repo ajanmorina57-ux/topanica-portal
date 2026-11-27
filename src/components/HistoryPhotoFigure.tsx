@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import { useTranslations } from "next-intl";
 
 interface HistoryPhotoFigureProps {
   src: string;
@@ -11,6 +12,7 @@ interface HistoryPhotoFigureProps {
 
 /** Displays an uncropped historical plate with an accessible click-to-zoom lightbox. */
 export function HistoryPhotoFigure({ src, alt, caption }: HistoryPhotoFigureProps) {
+  const t = useTranslations("History");
   const [open, setOpen] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
@@ -48,7 +50,7 @@ export function HistoryPhotoFigure({ src, alt, caption }: HistoryPhotoFigureProp
             returnFocusRef.current = event.currentTarget;
             setOpen(true);
           }}
-          aria-label={`Zmadho dokumentin: ${alt}`}
+          aria-label={t("zoomAria", { alt })}
         >
           <Image
             src={src}
@@ -75,7 +77,7 @@ export function HistoryPhotoFigure({ src, alt, caption }: HistoryPhotoFigureProp
               <path d="m20 20-3.5-3.5" />
               <path d="M11 8v6M8 11h6" />
             </svg>
-            Shiko në madhësi të plotë
+            {t("viewFullSize")}
           </span>
         </button>
         {caption && <figcaption className="history-plate-caption">{caption}</figcaption>}
@@ -95,7 +97,7 @@ export function HistoryPhotoFigure({ src, alt, caption }: HistoryPhotoFigureProp
             ref={closeRef}
             type="button"
             className="lightbox-close"
-            aria-label="Mbyll pamjen"
+            aria-label={t("closeLightboxAria")}
             onClick={() => setOpen(false)}
           >
             <svg
