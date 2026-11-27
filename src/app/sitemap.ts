@@ -32,7 +32,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   const staticRoutes: MetadataRoute.Sitemap = STATIC_ROUTE_CONFIG.flatMap(
     ({ route, changeFrequency, priority }) => {
-      const languages = getLanguageAlternates(route, { absolute: true });
+      const languages = getLanguageAlternates(route, { includeXDefault: true, absolute: true });
       return routing.locales.map((locale) => ({
         url: `${siteUrl}${getLocalizedPath(locale, route)}`,
         changeFrequency,
@@ -45,13 +45,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const articleRoutes: MetadataRoute.Sitemap = articles.flatMap((article) => {
     const languages = getLanguageAlternates("/lajme", {
       slug: article.slug,
+      includeXDefault: true,
       absolute: true,
     });
-    const lastModified = new Date(article.published_at ?? article.created_at);
+    const rawDate = article.published_at ?? article.created_at;
+    const parsedDate = rawDate ? new Date(rawDate) : null;
+    const lastModified =
+      parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate : undefined;
 
     return routing.locales.map((locale) => ({
       url: `${siteUrl}${getLocalizedPath(locale, "/lajme", article.slug)}`,
-      lastModified,
+      ...(lastModified ? { lastModified } : {}),
       changeFrequency: "weekly",
       priority: 0.7,
       alternates: { languages },

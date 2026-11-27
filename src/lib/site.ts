@@ -112,15 +112,26 @@ export function isValidArticleCover(url?: string | null): url is string {
   return !GENERIC_COVER_PATTERNS.some((pattern) => pattern.test(trimmed));
 }
 
+export const CANONICAL_SITE_URL = "https://www.topanica.net";
+
 export function getSiteUrl(): string {
-  const raw =
+  const candidate =
     process.env.NEXT_PUBLIC_SITE_URL ||
     (process.env.VERCEL_PROJECT_PRODUCTION_URL
       ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
       : process.env.VERCEL_URL
         ? `https://${process.env.VERCEL_URL}`
-        : "http://localhost:3000");
-  return raw.replace(/\/+$/, "");
+        : "");
+
+  if (!candidate) {
+    return process.env.NODE_ENV === "production" ? CANONICAL_SITE_URL : "http://localhost:3000";
+  }
+
+  const trimmed = candidate.trim().replace(/\/+$/, "");
+  if (/^https?:\/\/(?:www\.)?topanica\.net$/i.test(trimmed)) {
+    return CANONICAL_SITE_URL;
+  }
+  return trimmed;
 }
 
 export function slugify(value: string) {
