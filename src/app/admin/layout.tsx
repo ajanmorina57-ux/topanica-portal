@@ -4,6 +4,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { ADMIN_CLIENT_MESSAGES, pickMessages } from "@/i18n/messages";
 import { getSiteUrl } from "@/lib/site";
+import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import sqMessages from "../../../messages/sq.json";
 import "../globals.css";
 
@@ -21,7 +22,10 @@ const adminMessages = pickMessages(sqMessages as AbstractIntlMessages, ADMIN_CLI
 
 export default function AdminLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="sq">
+    <html lang="sq" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body>
         <NextIntlClientProvider locale="sq" messages={adminMessages}>
           <SiteHeader />

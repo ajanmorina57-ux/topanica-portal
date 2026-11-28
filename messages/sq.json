@@ -24,7 +24,10 @@
     "navNews": "Lajme",
     "navHistory": "Historia",
     "navGallery": "Galeria",
-    "navContribute": "Ndani me ne"
+    "navContribute": "Ndani me ne",
+    "themeToggleAria": "Ndrysho temën e ngjyrave",
+    "themeToDark": "Kalo në pamjen e errët",
+    "themeToLight": "Kalo në pamjen e çelët"
   },
   "LanguageSwitcher": {
     "ariaLabel": "Zgjidhni gjuhën",

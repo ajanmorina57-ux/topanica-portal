@@ -24,7 +24,10 @@
     "navNews": "Nachrichten",
     "navHistory": "Geschichte",
     "navGallery": "Galerie",
-    "navContribute": "Mitmachen"
+    "navContribute": "Mitmachen",
+    "themeToggleAria": "Farbmodus wechseln",
+    "themeToDark": "Zum dunklen Modus wechseln",
+    "themeToLight": "Zum hellen Modus wechseln"
   },
   "LanguageSwitcher": {
     "ariaLabel": "Sprache wählen",

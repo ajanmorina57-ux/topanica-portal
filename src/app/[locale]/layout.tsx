@@ -7,6 +7,7 @@ import { routing } from "@/i18n/routing";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { getSiteUrl } from "@/lib/site";
+import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import { DEFAULT_OG_IMAGE, getAlternateOgLocales, OG_LOCALES } from "@/lib/seo";
 import "../globals.css";
 
@@ -67,7 +68,10 @@ export default async function LocaleLayout({
   const allMessages = await getMessages({ locale });
 
   return (
-    <html lang={locale}>
+    <html lang={locale} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body>
         <NextIntlClientProvider locale={locale} messages={pickMessages(allMessages, GLOBAL_CLIENT_MESSAGES)}>
           <SiteHeader />

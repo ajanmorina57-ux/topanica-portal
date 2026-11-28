@@ -24,7 +24,10 @@
     "navNews": "News",
     "navHistory": "History",
     "navGallery": "Gallery",
-    "navContribute": "Contribute"
+    "navContribute": "Contribute",
+    "themeToggleAria": "Toggle color theme",
+    "themeToDark": "Switch to dark mode",
+    "themeToLight": "Switch to light mode"
   },
   "LanguageSwitcher": {
     "ariaLabel": "Select language",

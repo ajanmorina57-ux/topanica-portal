@@ -3,6 +3,7 @@ import { type AbstractIntlMessages, NextIntlClientProvider } from "next-intl";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { GLOBAL_CLIENT_MESSAGES, pickMessages } from "@/i18n/messages";
+import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import sqMessages from "../../messages/sq.json";
 import "./globals.css";
 
@@ -12,7 +13,10 @@ export default function RootNotFound() {
   const t = sqMessages.NotFound;
 
   return (
-    <html lang="sq">
+    <html lang="sq" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body>
         <NextIntlClientProvider locale="sq" messages={notFoundClientMessages}>
           <SiteHeader />

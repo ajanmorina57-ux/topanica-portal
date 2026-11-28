@@ -28,7 +28,7 @@ export function pickMessages(
 }
 
 export const GLOBAL_CLIENT_MESSAGES = {
-  Header: ["navAria", "navNews", "navHistory", "navGallery"],
+  Header: ["navAria", "navNews", "navHistory", "navGallery", "themeToggleAria", "themeToDark", "themeToLight"],
   LanguageSwitcher: true,
 } as const satisfies NamespaceSelection;
 

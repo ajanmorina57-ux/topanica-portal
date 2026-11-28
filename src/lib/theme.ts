@@ -1,0 +1,2 @@
+/** Inline pre-paint script that sets data-theme before hydration to prevent a theme flash. */
+export const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('topanica-theme');var d=t==='dark'||(t!=='light'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.dataset.theme=d?'dark':'light';document.documentElement.style.colorScheme=d?'dark':'light';}catch(e){}})();`;

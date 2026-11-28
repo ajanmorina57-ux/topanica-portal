@@ -3,6 +3,7 @@ import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { HeaderNav } from "@/components/HeaderNav";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export function SiteHeader() {
   const t = useTranslations("Header");
@@ -18,6 +19,7 @@ export function SiteHeader() {
       </Link>
       <HeaderNav />
       <div className="header-actions">
+        <ThemeToggle />
         <LanguageSwitcher />
         <Link className="nav-action" href="/kontribuo">
           {t("navContribute")} <span aria-hidden="true">↗</span>
